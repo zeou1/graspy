@@ -12,6 +12,7 @@ from pathlib import Path
 
 import networkx as nx
 import numpy as np
+from scipy.sparse import spmatrix, issparse
 from sklearn.utils import check_array
 
 
@@ -37,7 +38,7 @@ def import_graph(graph):
 	"""
     if isinstance(graph, (nx.Graph, nx.DiGraph, nx.MultiGraph, nx.MultiDiGraph)):
         out = nx.to_numpy_array(graph, nodelist=sorted(graph.nodes), dtype=np.float)
-    elif isinstance(graph, (np.ndarray, np.memmap)):
+    elif isinstance(graph, (np.ndarray, np.memmap, spmatrix)):
         maximum = np.max(graph.shape)
         out = check_array(
             graph,
@@ -47,6 +48,7 @@ def import_graph(graph):
             ensure_min_features=maximum,
             ensure_min_samples=maximum,
             copy=True,
+            accept_sparse=True,
         )
     else:
         msg = "Input must be networkx.Graph or np.array, not {}.".format(type(graph))
@@ -151,7 +153,10 @@ def is_unweighted(X):
 
 
 def is_almost_symmetric(X, atol=1e-15):
-    return np.allclose(X, X.T, atol=atol)
+    if issparse(X):
+        return np.allclose(X.A, X.A.T, atol=atol)
+    else:
+        return np.allclose(X, X.T, atol=atol)
 
 
 def symmetrize(graph, method="triu"):

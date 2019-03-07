@@ -8,6 +8,7 @@
 import numpy as np
 import scipy
 import sklearn
+from scipy.sparse import spmatrix
 from scipy.stats import norm
 
 
@@ -96,7 +97,7 @@ def select_dimension(
         pp.918-930.
     """
     # Handle input data
-    if not isinstance(X, np.ndarray):
+    if not isinstance(X, (spmatrix, np.ndarray)):
         msg = "X must be a numpy array, not {}.".format(type(X))
         raise ValueError(msg)
     if X.ndim > 2:
