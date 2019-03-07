@@ -1,13 +1,14 @@
-import pytest
-import numpy as np
 import networkx as nx
-from numpy import array_equal, allclose
-from numpy.testing import assert_allclose
+import numpy as np
+import pytest
+from numpy import allclose, array_equal
 from numpy.linalg import norm
+from numpy.testing import assert_allclose
+from scipy.sparse import csr_matrix
 
-from graspy.embed.omni import OmnibusEmbed, _get_omni_matrix
-from graspy.simulations.simulations import er_np, er_nm
-from graspy.utils.utils import symmetrize, is_symmetric
+from graspy.embed.omni import OmnibusEmbed, _get_omni_matrix, _get_sparse_omni_matrix
+from graspy.simulations.simulations import er_nm, er_np
+from graspy.utils.utils import is_symmetric, symmetrize
 
 
 def generate_data(n, seed=1):
@@ -48,7 +49,7 @@ def test_omni_matrix_ones_zeros():
         assert array_equal(output, expected_output)
 
 
-def test_omni_matrix_random():
+def test_omni_matrix_random_undirected():
     expected_output = np.array(
         [
             [0.0, 1.0, 1.0, 0.0, 0.5, 0.5],
@@ -65,6 +66,35 @@ def test_omni_matrix_random():
 
     A = _get_omni_matrix(graphs)
     assert_allclose(A, expected_output)
+
+    sparse_graphs = [csr_matrix(graph) for graph in graphs]
+    B = _get_sparse_omni_matrix(sparse_graphs)
+
+    assert_allclose(B.A, expected_output)
+
+
+def test_omni_matrix_random_directed():
+    expected_output = np.array(
+        [
+            [0.0, 1.0, 0.0, 0.0, 0.5, 0.5],
+            [1.0, 0.0, 1.0, 0.5, 0.0, 1.0],
+            [1.0, 1.0, 0.0, 0.5, 0.5, 0.0],
+            [0.0, 0.5, 0.5, 0.0, 0.0, 1.0],
+            [0.5, 0.0, 1.0, 0.0, 0.0, 1.0],
+            [0.5, 0.5, 0.0, 0.0, 0.0, 0.0],
+        ]
+    )
+
+    np.random.seed(5)
+    graphs = [er_np(3, 0.5, directed=True).astype(float) for _ in range(2)]
+
+    A = _get_omni_matrix(graphs)
+    assert_allclose(A, expected_output)
+
+    sparse_graphs = [csr_matrix(graph) for graph in graphs]
+    B = _get_sparse_omni_matrix(sparse_graphs)
+
+    assert_allclose(B.A, expected_output)
 
 
 def test_omni_matrix_invalid_inputs():
