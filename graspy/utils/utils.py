@@ -16,7 +16,7 @@ from scipy.sparse import spmatrix, issparse
 from sklearn.utils import check_array
 
 
-def import_graph(graph):
+def import_graph(graph, sparse_output=True):
     """
 	A function for reading a graph and returning a shared
 	data type. Makes IO cleaner and easier.
@@ -37,7 +37,12 @@ def import_graph(graph):
     networkx.Graph, numpy.array
 	"""
     if isinstance(graph, (nx.Graph, nx.DiGraph, nx.MultiGraph, nx.MultiDiGraph)):
-        out = nx.to_numpy_array(graph, nodelist=sorted(graph.nodes), dtype=np.float)
+        if sparse_output:
+            out = nx.to_scipy_sparse_matrix(
+                graph, nodelist=sorted(graph.nodes), dtype=np.float
+            )
+        else:
+            out = nx.to_numpy_array(graph, nodelist=sorted(graph.nodes), dtype=np.float)
     elif isinstance(graph, (np.ndarray, np.memmap, spmatrix)):
         maximum = np.max(graph.shape)
         out = check_array(
@@ -50,6 +55,9 @@ def import_graph(graph):
             copy=True,
             accept_sparse=True,
         )
+        # Output dense if input is sparse when sparse_output==False
+        if (issparse(out)) and (not sparse_output):
+            out = out.A
     else:
         msg = "Input must be networkx.Graph or np.array, not {}.".format(type(graph))
         raise TypeError(msg)
