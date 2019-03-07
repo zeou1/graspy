@@ -141,7 +141,10 @@ def import_edgelist(
 
 
 def is_symmetric(X):
-    return np.array_equal(X, X.T)
+    if issparse(X):
+        return (X != X.T).nnz == 0
+    else:
+        return np.array_equal(X, X.T)
 
 
 def is_loopless(X):
@@ -154,7 +157,7 @@ def is_unweighted(X):
 
 def is_almost_symmetric(X, atol=1e-15):
     if issparse(X):
-        return np.allclose(X.A, X.A.T, atol=atol)
+        return (abs(X - X.T) > atol).nnz == 0
     else:
         return np.allclose(X, X.T, atol=atol)
 
