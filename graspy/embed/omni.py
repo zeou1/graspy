@@ -5,6 +5,7 @@
 import warnings
 
 import numpy as np
+from scipy.sparse import issparse, bmat
 from sklearn.utils.validation import check_is_fitted
 
 from .base import BaseEmbed
@@ -67,6 +68,32 @@ def _get_omni_matrix(graphs):
     out = (A[:, :, None, :] + A.transpose(1, 0, 2)[None, :, :, :]).reshape(n * m, -1)
 
     # Averaging
+    out /= 2
+
+    return out
+
+
+def _get_sparse_omni_matrix(graphs):
+    """
+    Helper function for creating the omnibus matrix.
+
+    Parameters
+    ----------
+    graphs : list
+        List of sparse matrix with shapes (n_vertices, n_vertices).
+
+    Returns
+    -------
+    out : sparse matrix
+        Array of shape (n_vertices * n_graphs, n_vertices * n_graphs)
+    """
+    out = bmat(
+        [
+            [graphs[idx] + graphs[jdx] for jdx in range(len(graphs))]
+            for idx in range(len(graphs))
+        ]
+    )
+
     out /= 2
 
     return out
@@ -186,7 +213,11 @@ class OmnibusEmbed(BaseEmbed):
         self.n_graphs_ = len(graphs)
         self.n_vertices_ = graphs[0].shape[0]
 
-        graphs = np.stack(graphs)
+        all_sparse = all(issparse(g) for g in graphs)
+        if all_sparse:
+            pass
+        else:
+            graphs = np.stack(graphs)
 
         # Check if Abar is connected
         if self.check_lcc:
@@ -199,7 +230,10 @@ class OmnibusEmbed(BaseEmbed):
                 warnings.warn(msg, UserWarning)
 
         # Create omni matrix
-        omni_matrix = _get_omni_matrix(graphs)
+        if all_sparse:
+            omni_matrix = _get_sparse_omni_matrix(graphs)
+        else:
+            omni_matrix = _get_omni_matrix(graphs)
 
         # Embed
         self._reduce_dim(omni_matrix)
