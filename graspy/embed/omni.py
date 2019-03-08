@@ -91,7 +91,8 @@ def _get_sparse_omni_matrix(graphs):
         [
             [graphs[idx] + graphs[jdx] for jdx in range(len(graphs))]
             for idx in range(len(graphs))
-        ]
+        ],
+        format="csr",
     )
 
     out /= 2
