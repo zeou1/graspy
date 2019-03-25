@@ -121,6 +121,7 @@ notebooks/bpedigo/emmons/*.csv
 notebooks/bpedigo/diag_procrust.py
 /graspy-env
 notebooks/bpedigo/new_pairs.py
+<<<<<<< HEAD
 *.code-workspace
 *.png
 
