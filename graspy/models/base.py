@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
-from ..utils import import_graph, is_almost_symmetric, binarize
+from ..utils import import_graph, is_almost_symmetric
 
 
 class BaseGraphEstimator(BaseEstimator):
@@ -81,11 +81,6 @@ class BaseGraphEstimator(BaseEstimator):
         graph = 1
         return graph
 
-    @abstractmethod
-    def _n_parameters(self):
-        n_parameters = 1
-        return n_parameters
-
 
 def _calculate_p(block):
     n_edges = np.count_nonzero(block)
@@ -105,6 +100,3 @@ def cartprod(*arrays):
         np.meshgrid(*arrays, indexing="ij"), np.roll(np.arange(N + 1), -1)
     ).reshape(-1, N)
 
-
-def bic(l_hat, n_samples, n_params):
-    return np.log(n_samples) * n_params - 2 * np.log(l_hat)
