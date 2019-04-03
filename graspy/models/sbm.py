@@ -42,16 +42,14 @@ class SBEstimator(BaseGraphEstimator):
             vertex_labels = y
 
         graph = import_graph(graph)
-        # self.n_vertices = graph.shape[0]
-
-        p = _calculate_p(graph)
-        self.p_ = p
+        self.n_verts = graph.shape[0]
 
         # TODO: need to do this part in such a way as to align the labels
         # with a way that we can plot/sample
         block_labels, block_inv, block_sizes = np.unique(
-            self.vertex_labels_, return_inverse=True, return_counts=True
+            vertex_labels, return_inverse=True, return_counts=True
         )
+        # TODO: could sort everything by size here?
 
         self.block_sizes_ = block_sizes
 
@@ -83,6 +81,7 @@ class SBEstimator(BaseGraphEstimator):
             block = graph[from_inds, :][:, to_inds]
             p = _calculate_p(block)
             block_p[from_block, to_block] = p
+
         self.block_p_ = block_p
 
         block_map = cartprod(block_inv, block_inv).T
@@ -126,13 +125,14 @@ class SBEstimator(BaseGraphEstimator):
         return self
 
     def sample(self):
-        graph = sbm(
-            self.block_sizes_,
-            self.block_p_,
-            loops=self.loops,
-            directed=self.directed,
-            dc=self.degree_corrections_,
-        )
+        # graph = sbm(
+        #     self.block_sizes_,
+        #     self.block_p_,
+        #     loops=self.loops,
+        #     directed=self.directed,
+        #     dc=self.degree_corrections_,
+        # )
+        graph = sample_edges(self.p_mat_, directed=self.directed, loops=self.loops)
         return graph
 
     def _n_parameters(self):
