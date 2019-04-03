@@ -1,7 +1,7 @@
 from .base import BaseGraphEstimator
 from ..embed import AdjacencySpectralEmbed
 from ..simulations import rdpg, p_from_latent, sample_edges
-from ..utils import import_graph
+from ..utils import import_graph, augment_diagonal
 import numpy as np
 
 
