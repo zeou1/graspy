@@ -935,7 +935,7 @@ def _plot_brackets(ax, group_names, tick_loc, tick_width, curve, level, axis, ma
         ax.spines[direction].set_visible(False)
     if axis == "x":
         ax.set_xticks(tick_loc)
-        ax.set_xticklabels(group_names, fontsize=28, verticalalignment="center")
+        ax.set_xticklabels(group_names, fontsize=40, verticalalignment="center")
         ax.xaxis.set_label_position("top")
         ax.xaxis.tick_top()
         ax.xaxis.labelpad = 30
@@ -943,7 +943,7 @@ def _plot_brackets(ax, group_names, tick_loc, tick_width, curve, level, axis, ma
         ax.tick_params(axis="x", which="major", pad=15)
     elif axis == "y":
         ax.set_yticks(tick_loc)
-        ax.set_yticklabels(group_names, fontsize=28, verticalalignment="center")
+        ax.set_yticklabels(group_names, fontsize=40, verticalalignment="center")
         # ax.yaxis.set_label_position('top')
         # ax.yaxis.tick_top()
         ax.set_ylim(0, max_size)
