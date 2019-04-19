@@ -12,7 +12,7 @@ from pathlib import Path
 
 import networkx as nx
 import numpy as np
-from scipy.sparse import spmatrix, issparse
+from scipy.sparse import issparse, spmatrix
 from sklearn.utils import check_array
 
 
@@ -155,11 +155,17 @@ def is_symmetric(X):
 
 
 def is_loopless(X):
-    return not np.any(np.diag(X) != 0)
+    if issparse(X):
+        return (X.diagonal() == 0).all()
+    else:
+        return (np.diag(X) == 0).all()
 
 
 def is_unweighted(X):
-    return ((X == 0) | (X == 1)).all()
+    if issparse(X):
+        return ~(X.data != 1).any()
+    else:
+        return ((X == 0) | (X == 1)).all()
 
 
 def is_almost_symmetric(X, atol=1e-15):
