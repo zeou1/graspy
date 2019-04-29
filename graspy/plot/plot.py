@@ -245,9 +245,10 @@ def heatmap(
         else:
             outer_hier_labels = np.array(outer_hier_labels)
             arr = _sort_graph(arr, inner_hier_labels, outer_hier_labels)
-
+    else:
+        arr = _sort_graph(arr, np.ones(arr.shape[0]), np.ones(arr.shape[0]))
     # Global plotting settings
-    CBAR_KWS = dict(shrink=0.7, norm=colors.NoNorm)
+    CBAR_KWS = dict(shrink=0.7,)# norm=colors.Normalize(vmin=0, vmax=1))
 
     with sns.plotting_context(context, font_scale=font_scale):
         if ax is None:
@@ -265,6 +266,7 @@ def heatmap(
             vmin=vmin,
             vmax=vmax,
         )
+
         if title is not None:
             if title_pad is None:
                 if inner_hier_labels is not None:
@@ -842,21 +844,17 @@ def screeplot(
     return ax
 
 
-def _sort_inds(inner_labels, outer_labels):
-    # inner_freq, _, outer_freq, _ = _get_freqs(inner_labels, outer_labels)
+def _sort_inds(graph, inner_labels, outer_labels):
     sort_df = pd.DataFrame(columns=("inner_labels", "outer_labels"))
     sort_df["inner_labels"] = inner_labels
-    if outer_labels is not None:
-        sort_df["outer_labels"] = outer_labels
-    #     sort_df.sort_values(
-    #         by=["outer_labels", "inner_labels"], kind="mergesort", inplace=True
-    #     )
-    #     outer_labels = sort_df["outer_labels"]
-    # inner_labels = sort_df["inner_labels"]
-    # print(inner_freq)
-    # print(outer_freq)
-    inner_label_counts, outer_label_counts = _get_freq_maps(inner_labels, outer_labels)
-    print(inner_label_counts)
+    sort_df["outer_labels"] = outer_labels
+
+    # get frequencies of the different labels so we can sort by them
+    inner_label_counts = _get_freq_vec(inner_labels)
+    outer_label_counts = _get_freq_vec(outer_labels)
+
+    # inverse counts so we can sort largest to smallest
+    # would rather do it this way so can still sort alphabetical for ties
     sort_df["inner_counts"] = len(inner_labels) - inner_label_counts
     sort_df["outer_counts"] = len(outer_labels) - outer_label_counts
 
@@ -865,10 +863,17 @@ def _sort_inds(inner_labels, outer_labels):
     sort_df["node_edgesums"] = node_edgesums.max() - node_edgesums
 
     sort_df.sort_values(
-        by=["outer_counts", "outer_labels", "inner_counts", "inner_labels"],
+        by=[
+            "outer_counts",
+            "outer_labels",
+            "inner_counts",
+            "inner_labels",
+            "node_edgesums",
+        ],
         kind="mergesort",
         inplace=True,
     )
+
     sorted_inds = sort_df.index.values
     return sorted_inds
 
@@ -880,6 +885,7 @@ def _sort_graph(graph, inner_labels, outer_labels):
 
 
 def _get_freqs(inner_labels, outer_labels=None):
+    # use this because unique would give alphabetical
     _, outer_freq = _unique_like(outer_labels)
     outer_freq_cumsum = np.hstack((0, outer_freq.cumsum()))
 
@@ -895,7 +901,7 @@ def _get_freqs(inner_labels, outer_labels=None):
     return inner_freq, inner_freq_cumsum, outer_freq, outer_freq_cumsum
 
 
-def _get_freq_maps(inner_labels, outer_labels):
+def _get_freq_vec(vals):
     # give each set of labels a vector corresponding to its frequency
     _, inv, counts = np.unique(vals, return_counts=True, return_inverse=True)
     count_vec = counts[inv]
@@ -925,20 +931,11 @@ def _plot_groups(ax, graph, inner_labels, outer_labels=None, fontsize=30):
 
     inner_freq, inner_freq_cumsum, outer_freq, outer_freq_cumsum = _get_freqs(
         inner_labels, outer_labels
-    )  # wrong
-
-    # inner_unique, inner_ind = np.unique(inner_labels, return_index=True)
-    # inner_ind_sort = np.argsort(inner_ind)
-    # inner_unique = inner_unique[inner_ind_sort]
-    # inner_counts = inner_counts[inner_ind_sort]
-    # outer_unique, outer_ind = np.unique(outer_labels, return_index=True)
-    # outer_ind_sort = np.argsort(outer_ind)
-    # outer_unique = outer_unique[outer_ind_sort]
-    # outer_counts = outer_counts[outer_ind_sort]
-
+    )
     inner_unique, _ = _unique_like(inner_labels)
     outer_unique, _ = _unique_like(outer_labels)
 
+    n_verts = graph.shape[0]
     # draw lines
     for x in inner_freq_cumsum:
         if x != inner_freq_cumsum[0]:
