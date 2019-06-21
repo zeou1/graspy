@@ -84,6 +84,7 @@ class SBMEstimator(BaseGraphEstimator):
         max_comm=10,
         cluster_kws={},
         embed_kws={},
+        rank="full",
     ):
         super().__init__(directed=directed, loops=loops)
 
@@ -94,6 +95,7 @@ class SBMEstimator(BaseGraphEstimator):
         self.min_comm = min_comm
         self.max_comm = max_comm
         self.embed_kws = embed_kws
+        self.rank = rank
 
     def _estimate_assignments(self, graph):
         """
@@ -155,6 +157,15 @@ class SBMEstimator(BaseGraphEstimator):
 
         if not self.directed:
             block_p = symmetrize(block_p)
+
+        if self.rank != "full" and block_p.shape[0] > 1:
+            ase = AdjacencySpectralEmbed(n_components=self.rank, algorithm="full")
+            block_latent = ase.fit_transform(block_p)
+            if self.directed:
+                block_p = block_latent[0] @ block_latent[1].T
+            else:
+                block_p = block_latent @ block_latent.T
+
         self.block_p_ = block_p
 
         p_mat = _block_to_full(block_p, block_inv, graph.shape)
@@ -168,9 +179,15 @@ class SBMEstimator(BaseGraphEstimator):
         n_blocks = self.block_p_.shape[0]
         n_parameters = 0
         if self.directed:
-            n_parameters += n_blocks ** 2
+            if self.rank != "full":
+                n_parameters += self.rank * self.block_p_.shape[0] * 2
+            else:
+                n_parameters += n_blocks ** 2
         else:
-            n_parameters += n_blocks * (n_blocks + 1) / 2
+            if self.rank != "full":
+                n_parameters += self.rank * self.block_p_.shape[0]
+            else:
+                n_parameters += n_blocks * (n_blocks + 1) / 2
         if hasattr(self, "vertex_assignments_"):
             n_parameters += n_blocks - 1
         return n_parameters
