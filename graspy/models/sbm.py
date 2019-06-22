@@ -13,6 +13,8 @@ from ..utils import (
 )
 from .base import BaseGraphEstimator, _calculate_p
 
+import copy
+
 
 def _check_common_inputs(n_components, cluster_kws, embed_kws):
     if not isinstance(n_components, int) and n_components is not None:
@@ -110,7 +112,7 @@ class SBMEstimator(BaseGraphEstimator):
         gc = GaussianCluster(
             min_components=self.min_comm,
             max_components=self.max_comm,
-            **self.cluster_kws
+            **self.cluster_kws,
         )
         vertex_assignments = gc.fit_predict(latent)
         self.vertex_assignments_ = vertex_assignments
@@ -258,6 +260,7 @@ class DCSBMEstimator(BaseGraphEstimator):
         n_components=None,
         n_blocks=2,
         n_init=1,
+        metric="mse",
         cluster_kws={},
         embed_kws={},
     ):
@@ -271,7 +274,9 @@ class DCSBMEstimator(BaseGraphEstimator):
         self.cluster_kws = cluster_kws
         self.n_components = n_components
         self.n_blocks = n_blocks
-        self.embed_kws = {}
+        self.embed_kws = embed_kws
+        self.metric = metric
+        self.n_init = n_init
 
     def _estimate_assignments(self, graph):
         graph = symmetrize(graph, method="avg")
@@ -279,14 +284,25 @@ class DCSBMEstimator(BaseGraphEstimator):
             form="R-DAD", n_components=self.n_components, **self.embed_kws
         )
         latent = lse.fit_transform(graph)
+        best_metric = np.inf
+        best_assignments = []
         for i in range(self.n_init):
             gc = GaussianCluster(
                 min_components=self.n_blocks,
                 max_components=self.n_blocks,
-                **self.cluster_kws
+                **self.cluster_kws,
             )
-
-        self.vertex_assignments_ = gc.fit_predict(latent)
+            vertex_assignments = gc.fit_predict(latent)
+            if self.metric == "mse":
+                # copy the parameters of the current estimator over to a "fake" DCSBM
+                # this one is a priori, just used to conveniently calculate P_hat
+                temp_estimator = copy.deepcopy(self)
+                temp_estimator.fit(graph, y=vertex_assignments)
+                mse = temp_estimator.mse(graph)
+                if mse < best_metric:
+                    best_assignments = vertex_assignments
+                    best_metric = mse
+        self.vertex_assignments_ = best_assignments
 
     def fit(self, graph, y=None):
         """
@@ -309,6 +325,7 @@ class DCSBMEstimator(BaseGraphEstimator):
             Fitted instance of self 
         """
         graph = import_graph(graph)
+
         if y is None:
             self._estimate_assignments(graph)
             y = self.vertex_assignments_
