@@ -14,23 +14,23 @@ from ..utils import (
 from .base import BaseGraphEstimator, _calculate_p
 
 
-def _check_common_inputs(n_components, min_comm, max_comm, cluster_kws, embed_kws):
+def _check_common_inputs(n_components, cluster_kws, embed_kws):
     if not isinstance(n_components, int) and n_components is not None:
         raise TypeError("n_components must be an int or None")
     elif n_components is not None and n_components < 1:
         raise ValueError("n_components must be > 0")
 
-    if not isinstance(min_comm, int):
-        raise TypeError("min_comm must be an int")
-    elif min_comm < 1:
-        raise ValueError("min_comm must be > 0")
+    # if not isinstance(min_comm, int):
+    #     raise TypeError("min_comm must be an int")
+    # elif min_comm < 1:
+    #     raise ValueError("min_comm must be > 0")
 
-    if not isinstance(max_comm, int):
-        raise TypeError("max_comm must be an int")
-    elif max_comm < 1:
-        raise ValueError("max_comm must be > 0")
-    elif max_comm < min_comm:
-        raise ValueError("max_comm must be >= min_comm")
+    # if not isinstance(max_comm, int):
+    #     raise TypeError("max_comm must be an int")
+    # elif max_comm < 1:
+    #     raise ValueError("max_comm must be > 0")
+    # elif max_comm < min_comm:
+    #     raise ValueError("max_comm must be >= min_comm")
 
     if not isinstance(cluster_kws, dict):
         raise TypeError("cluster_kws must be a dict")
@@ -80,20 +80,18 @@ class SBMEstimator(BaseGraphEstimator):
         directed=True,
         loops=False,
         n_components=None,
-        min_comm=1,
-        max_comm=10,
+        n_blocks=2,
         cluster_kws={},
         embed_kws={},
         rank="full",
     ):
         super().__init__(directed=directed, loops=loops)
 
-        _check_common_inputs(n_components, min_comm, max_comm, cluster_kws, embed_kws)
+        _check_common_inputs(n_components, cluster_kws, embed_kws)
 
         self.cluster_kws = cluster_kws
         self.n_components = n_components
-        self.min_comm = min_comm
-        self.max_comm = max_comm
+        self.n_blocks = n_blocks
         self.embed_kws = embed_kws
         self.rank = rank
 
@@ -258,13 +256,13 @@ class DCSBMEstimator(BaseGraphEstimator):
         directed=True,
         loops=False,
         n_components=None,
-        min_comm=1,
-        max_comm=10,
+        n_blocks=2,
+        n_init=1,
         cluster_kws={},
         embed_kws={},
     ):
         super().__init__(directed=directed, loops=loops)
-        _check_common_inputs(n_components, min_comm, max_comm, cluster_kws, embed_kws)
+        _check_common_inputs(n_components, cluster_kws, embed_kws)
 
         if not isinstance(degree_directed, bool):
             raise TypeError("`degree_directed` must be of type bool")
@@ -272,8 +270,7 @@ class DCSBMEstimator(BaseGraphEstimator):
         self.degree_directed = degree_directed
         self.cluster_kws = cluster_kws
         self.n_components = n_components
-        self.min_comm = min_comm
-        self.max_comm = max_comm
+        self.n_blocks = n_blocks
         self.embed_kws = {}
 
     def _estimate_assignments(self, graph):
@@ -282,11 +279,13 @@ class DCSBMEstimator(BaseGraphEstimator):
             form="R-DAD", n_components=self.n_components, **self.embed_kws
         )
         latent = lse.fit_transform(graph)
-        gc = GaussianCluster(
-            min_components=self.min_comm,
-            max_components=self.max_comm,
-            **self.cluster_kws
-        )
+        for i in range(self.n_init):
+            gc = GaussianCluster(
+                min_components=self.n_blocks,
+                max_components=self.n_blocks,
+                **self.cluster_kws
+            )
+
         self.vertex_assignments_ = gc.fit_predict(latent)
 
     def fit(self, graph, y=None):
