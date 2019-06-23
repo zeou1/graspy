@@ -286,6 +286,8 @@ def to_laplace(graph, form="DAD", regularizer=None):
             )
         elif regularizer < 0:
             raise ValueError("Regularizer must be greater than or equal to 0")
+        else:
+            regularizer = regularizer * np.mean(D_vec)
         D_vec += regularizer
 
     with np.errstate(divide="ignore"):

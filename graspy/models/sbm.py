@@ -261,6 +261,7 @@ class DCSBMEstimator(BaseGraphEstimator):
         n_blocks=2,
         n_init=1,
         metric="mse",
+        co_block=False,
         cluster_kws={},
         embed_kws={},
     ):
@@ -277,6 +278,7 @@ class DCSBMEstimator(BaseGraphEstimator):
         self.embed_kws = embed_kws
         self.metric = metric
         self.n_init = n_init
+        self.co_block = co_block
 
     def _estimate_assignments(self, graph):
         graph = symmetrize(graph, method="avg")
@@ -286,22 +288,26 @@ class DCSBMEstimator(BaseGraphEstimator):
         latent = lse.fit_transform(graph)
         best_metric = np.inf
         best_assignments = []
+        covariance_types = ["full", "tied", "diag", "spherical"]
+        # TODO this could also be a place for unsupervised grid search
         for i in range(self.n_init):
-            gc = GaussianCluster(
-                min_components=self.n_blocks,
-                max_components=self.n_blocks,
-                **self.cluster_kws,
-            )
-            vertex_assignments = gc.fit_predict(latent)
-            if self.metric == "mse":
-                # copy the parameters of the current estimator over to a "fake" DCSBM
-                # this one is a priori, just used to conveniently calculate P_hat
-                temp_estimator = copy.deepcopy(self)
-                temp_estimator.fit(graph, y=vertex_assignments)
-                mse = temp_estimator.mse(graph)
-                if mse < best_metric:
-                    best_assignments = vertex_assignments
-                    best_metric = mse
+            for cov in covariance_types:
+                gc = GaussianCluster(
+                    min_components=self.n_blocks,
+                    max_components=self.n_blocks,
+                    covariance_type=cov,
+                    **self.cluster_kws,
+                )
+                vertex_assignments = gc.fit_predict(latent)
+                if self.metric == "mse":
+                    # copy the parameters of the current estimator over to a fake DCSBM
+                    # this one is a priori, just used to conveniently calculate P_hat
+                    temp_estimator = copy.deepcopy(self)
+                    temp_estimator.fit(graph, y=vertex_assignments)
+                    mse = temp_estimator.mse(graph)
+                    if mse < best_metric:
+                        best_assignments = vertex_assignments
+                        best_metric = mse
         self.vertex_assignments_ = best_assignments
 
     def fit(self, graph, y=None):

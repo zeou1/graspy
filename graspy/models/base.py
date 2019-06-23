@@ -154,7 +154,7 @@ class BaseGraphEstimator(BaseEstimator):
         likelihood = successes + failures
         return np.log(likelihood)
 
-    def score(self, graph):
+    def score(self, graph, clip=None):
         """
         Compute the average log-likelihood over each potential edge of the 
         given graph.
@@ -173,7 +173,7 @@ class BaseGraphEstimator(BaseEstimator):
             sum of log-loglikelihoods for each potential edge in input graph
         """
         check_is_fitted(self, "p_mat_")
-        return np.sum(self.score_samples(graph))
+        return np.sum(self.score_samples(graph, clip=clip))
 
     @property
     def _pairwise(self):
