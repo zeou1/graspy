@@ -86,6 +86,9 @@ class SBMEstimator(BaseGraphEstimator):
         cluster_kws={},
         embed_kws={},
         rank="full",
+        co_block=False,
+        n_init=1,
+        metric="mse",
     ):
         super().__init__(directed=directed, loops=loops)
 
@@ -96,6 +99,9 @@ class SBMEstimator(BaseGraphEstimator):
         self.n_blocks = n_blocks
         self.embed_kws = embed_kws
         self.rank = rank
+        self.co_block = co_block
+        self.n_init = n_init
+        self.metric = metric
 
     def _estimate_assignments(self, graph):
         """
@@ -107,15 +113,45 @@ class SBMEstimator(BaseGraphEstimator):
         latent = AdjacencySpectralEmbed(
             n_components=self.n_components, **self.embed_kws
         ).fit_transform(embed_graph)
-        if isinstance(latent, tuple):
-            latent = np.concatenate(latent, axis=1)
-        gc = GaussianCluster(
-            min_components=self.n_blocks,
-            max_components=self.n_blocks,
-            **self.cluster_kws,
-        )
-        vertex_assignments = gc.fit_predict(latent)
-        self.vertex_assignments_ = vertex_assignments
+
+        # gc = GaussianCluster(
+        #     min_components=self.n_blocks,
+        #     max_components=self.n_blocks,
+        #     **self.cluster_kws,
+        # )
+        # vertex_assignments = gc.fit_predict(latent)
+        # self.vertex_assignments_ = vertex_assignments
+        best_metric = np.inf
+        best_assignments = []
+        covariance_types = ["full", "tied", "diag", "spherical"]
+        for i in range(self.n_init):
+            for cov in covariance_types:
+                gc = GaussianCluster(
+                    min_components=self.n_blocks,
+                    max_components=self.n_blocks,
+                    covariance_type=cov,
+                    **self.cluster_kws,
+                )
+                if not self.co_block:
+                    if isinstance(latent, tuple):
+                        latent = np.concatenate(latent, axis=1)
+                    vertex_assignments = gc.fit_predict(latent)
+                if self.co_block:
+                    vertex_left_assignments = gc.fit_predict(latent[0])
+                    vertex_right_assignements = gc.fit_predict(latent[1])
+                    vertex_assignments = np.stack(
+                        (vertex_left_assignments, vertex_right_assignements), axis=1
+                    )
+                if self.metric == "mse":
+                    # copy the parameters of the current estimator over to a fake SBM
+                    # this one is a priori, just used to conveniently calculate P_hat
+                    temp_estimator = copy.deepcopy(self)
+                    temp_estimator.fit(graph, y=vertex_assignments)
+                    mse = temp_estimator.mse(graph)
+                    if mse < best_metric:
+                        best_assignments = vertex_assignments
+                        best_metric = mse
+        self.vertex_assignments_ = best_assignments
 
     def fit(self, graph, y=None):
         """
@@ -135,6 +171,9 @@ class SBMEstimator(BaseGraphEstimator):
         """
         graph = import_graph(graph)
 
+        if self.co_block and not self.directed:
+            raise ValueError("Incompatible models silly!")
+
         if not is_unweighted(graph):
             raise NotImplementedError(
                 "Graph model is currently only implemented for unweighted graphs."
@@ -146,10 +185,26 @@ class SBMEstimator(BaseGraphEstimator):
 
             _, counts = np.unique(y, return_counts=True)
             self.block_weights_ = counts / graph.shape[0]
-        else:
-            check_X_y(graph, y)
+        # else:
+        #     check_X_y(graph, y, ensure_2d=True, allow_nd=False)
 
-        block_vert_inds, block_inds, block_inv = _get_block_indices(y)
+        if self.co_block:
+            if y.ndim != 2:
+                raise ValueError("co-block y has only 1 dimension")
+            out_block_vert_inds, out_block_inds, out_block_inv = _get_block_indices(
+                y[:, 0]
+            )
+            in_block_vert_inds, in_block_inds, in_block_inv = _get_block_indices(
+                y[:, 1]
+            )
+            block_vert_inds = (out_block_vert_inds, in_block_vert_inds)
+            block_inds = (out_block_inds, in_block_inds)
+            block_inv = (out_block_inv, in_block_inv)
+        else:
+            block_vert_inds, block_inds, block_inv = _get_block_indices(y)
+            block_vert_inds = (block_vert_inds, block_vert_inds)
+            block_inds = (block_inds, block_inds)
+            block_inv = (block_inv, block_inv)
 
         if not self.loops:
             graph = remove_loops(graph)
@@ -397,6 +452,13 @@ def _get_block_indices(y):
     block_labels, block_inv, block_sizes = np.unique(
         y, return_inverse=True, return_counts=True
     )
+    # if len(y.shape) > 1 and y.shape[1] == 2:
+    #     out_block_labels, out_block_inv, out_block_sizes = np.unique(
+    #         y[:, 0], return_inverse=True, return_counts=True
+    #     )
+    #     in_block_labels, in_block_inv, in_block_sizes = np.unique(
+    #         y[:, 1], return_inverse=True, return_counts=True
+    #     )
 
     n_blocks = len(block_labels)
     block_inds = range(n_blocks)
@@ -417,15 +479,16 @@ def _calculate_block_p(graph, block_inds, block_vert_inds, return_counts=False):
     return_counts : whether to calculate counts rather than proportions
     """
 
-    n_blocks = len(block_inds)
-    block_pairs = cartprod(block_inds, block_inds)
-    block_p = np.zeros((n_blocks, n_blocks))
+    n_out_blocks = len(block_inds[0])
+    n_in_blocks = len(block_inds[1])
+    block_pairs = cartprod(block_inds[0], block_inds[1])
+    block_p = np.zeros((n_out_blocks, n_in_blocks))
 
     for p in block_pairs:
         from_block = p[0]
         to_block = p[1]
-        from_inds = block_vert_inds[from_block]
-        to_inds = block_vert_inds[to_block]
+        from_inds = block_vert_inds[0][from_block]
+        to_inds = block_vert_inds[1][to_block]
         block = graph[from_inds, :][:, to_inds]
         if return_counts:
             p = np.count_nonzero(block)
@@ -443,7 +506,45 @@ def _block_to_full(block_mat, inverse, shape):
     block mat : k x k 
     inverse : array like length n, 
     """
-    block_map = cartprod(inverse, inverse).T
+    block_map = cartprod(inverse[0], inverse[1]).T
     mat_by_edge = block_mat[block_map[0], block_map[1]]
     full_mat = mat_by_edge.reshape(shape)
     return full_mat
+
+
+# def _cluster(
+#     latent_left,
+#     latent_right=None,
+#     n_init=1,
+#     n_blocks=None,
+#     cluster_kws=None,
+#     metric="mse",
+# ):
+#     best_metric = np.inf
+#     best_assignments = []
+#     covariance_types = ["full", "tied", "diag", "spherical"]
+#     # TODO this could also be a place for unsupervised grid search
+#     for i in range(n_init):
+#         for cov in covariance_types:
+#             gc = GaussianCluster(
+#                 min_components=n_blocks,
+#                 max_components=n_blocks,
+#                 covariance_type=cov,
+#                 **cluster_kws,
+#             )
+#             vertex_assignments = gc.fit_predict(latent_left)
+#             if latent_right is not None:
+#                 vertex_right_assignements = gc.fit_predict(latent_right)
+#                 vertex_assignments = np.stack(
+#                     (vertex_assignments, vertex_right_assignements), axis=1
+#                 )
+#             if metric == "mse":
+#                 # copy the parameters of the current estimator over to a fake DCSBM
+#                 # this one is a priori, just used to conveniently calculate P_hat
+#                 temp_estimator = copy.deepcopy(self)
+#                 temp_estimator.fit(graph, y=vertex_assignments)
+#                 mse = temp_estimator.mse(graph)
+#                 if mse < best_metric:
+#                     best_assignments = vertex_assignments
+#                     best_metric = mse
+#     return best_assignments
