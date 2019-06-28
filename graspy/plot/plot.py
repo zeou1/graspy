@@ -991,7 +991,7 @@ def _plot_groups(ax, graph, inner_labels, outer_labels=None, fontsize=30):
 
     if plot_outer:
         # top outer curves
-        pad_scalar = 0.35 / 30 * fontsize
+        pad_scalar = 0.35 / 30 * fontsize + 0.4
         ax_x2 = divider.new_vertical(size="5%", pad=pad_scalar, pack_start=False)
         ax.figure.add_axes(ax_x2)
         _plot_brackets(

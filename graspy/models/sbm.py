@@ -110,8 +110,8 @@ class SBMEstimator(BaseGraphEstimator):
         if isinstance(latent, tuple):
             latent = np.concatenate(latent, axis=1)
         gc = GaussianCluster(
-            min_components=self.min_comm,
-            max_components=self.max_comm,
+            min_components=self.n_blocks,
+            max_components=self.n_blocks,
             **self.cluster_kws,
         )
         vertex_assignments = gc.fit_predict(latent)
