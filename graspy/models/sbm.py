@@ -185,26 +185,28 @@ class SBMEstimator(BaseGraphEstimator):
 
             _, counts = np.unique(y, return_counts=True)
             self.block_weights_ = counts / graph.shape[0]
-        # else:
-        #     check_X_y(graph, y, ensure_2d=True, allow_nd=False)
-
-        if self.co_block:
-            if y.ndim != 2:
-                raise ValueError("co-block y has only 1 dimension")
-            out_block_vert_inds, out_block_inds, out_block_inv = _get_block_indices(
-                y[:, 0]
-            )
-            in_block_vert_inds, in_block_inds, in_block_inv = _get_block_indices(
-                y[:, 1]
-            )
-            block_vert_inds = (out_block_vert_inds, in_block_vert_inds)
-            block_inds = (out_block_inds, in_block_inds)
-            block_inv = (out_block_inv, in_block_inv)
         else:
-            block_vert_inds, block_inds, block_inv = _get_block_indices(y)
-            block_vert_inds = (block_vert_inds, block_vert_inds)
-            block_inds = (block_inds, block_inds)
-            block_inv = (block_inv, block_inv)
+            check_X_y(graph, y, ensure_2d=True, allow_nd=False)
+
+        # if self.co_block:
+        #     if y.ndim != 2:
+        #         raise ValueError("co-block y has only 1 dimension")
+        #     out_block_vert_inds, out_block_inds, out_block_inv = _get_block_indices(
+        #         y[:, 0]
+        #     )
+        #     in_block_vert_inds, in_block_inds, in_block_inv = _get_block_indices(
+        #         y[:, 1]
+        #     )
+        #     block_vert_inds = (out_block_vert_inds, in_block_vert_inds)
+        #     block_inds = (out_block_inds, in_block_inds)
+        #     block_inv = (out_block_inv, in_block_inv)
+        # else:
+        #     block_vert_inds, block_inds, block_inv = _get_block_indices(y)
+        #     block_vert_inds = (block_vert_inds, block_vert_inds)
+        #     block_inds = (block_inds, block_inds)
+        #     block_inv = (block_inv, block_inv)
+
+        block_vert_inds, block_inds, block_inv = _get_block_indices(y)
 
         if not self.loops:
             graph = remove_loops(graph)
@@ -397,7 +399,6 @@ class DCSBMEstimator(BaseGraphEstimator):
 
         if not self.loops:
             graph = graph - np.diag(np.diag(graph))
-        block_p = _calculate_block_p(graph, block_inds, block_vert_inds)
 
         out_degree = np.count_nonzero(graph, axis=1).astype(float)
         in_degree = np.count_nonzero(graph, axis=0).astype(float)
@@ -420,6 +421,7 @@ class DCSBMEstimator(BaseGraphEstimator):
         block_p = _calculate_block_p(
             graph, block_inds, block_vert_inds, return_counts=True
         )
+
         p_mat = _block_to_full(block_p, block_inv, graph.shape)
         p_mat = p_mat * np.outer(degree_corrections[:, 0], degree_corrections[:, -1])
 
@@ -452,13 +454,6 @@ def _get_block_indices(y):
     block_labels, block_inv, block_sizes = np.unique(
         y, return_inverse=True, return_counts=True
     )
-    # if len(y.shape) > 1 and y.shape[1] == 2:
-    #     out_block_labels, out_block_inv, out_block_sizes = np.unique(
-    #         y[:, 0], return_inverse=True, return_counts=True
-    #     )
-    #     in_block_labels, in_block_inv, in_block_sizes = np.unique(
-    #         y[:, 1], return_inverse=True, return_counts=True
-    #     )
 
     n_blocks = len(block_labels)
     block_inds = range(n_blocks)
@@ -479,16 +474,22 @@ def _calculate_block_p(graph, block_inds, block_vert_inds, return_counts=False):
     return_counts : whether to calculate counts rather than proportions
     """
 
-    n_out_blocks = len(block_inds[0])
-    n_in_blocks = len(block_inds[1])
-    block_pairs = cartprod(block_inds[0], block_inds[1])
-    block_p = np.zeros((n_out_blocks, n_in_blocks))
+    # n_out_blocks = len(block_inds[0])
+    # n_in_blocks = len(block_inds[1])
+    # block_pairs = cartprod(block_inds[0], block_inds[1])
+    # block_p = np.zeros((n_out_blocks, n_in_blocks))
+
+    n_blocks = len(block_inds)
+    block_pairs = cartprod(block_inds, block_inds)
+    block_p = np.zeros((n_blocks, n_blocks))
 
     for p in block_pairs:
         from_block = p[0]
         to_block = p[1]
-        from_inds = block_vert_inds[0][from_block]
-        to_inds = block_vert_inds[1][to_block]
+        # from_inds = block_vert_inds[0][from_block]
+        # to_inds = block_vert_inds[1][to_block]
+        from_inds = block_vert_inds[from_block]
+        to_inds = block_vert_inds[to_block]
         block = graph[from_inds, :][:, to_inds]
         if return_counts:
             p = np.count_nonzero(block)
@@ -506,7 +507,8 @@ def _block_to_full(block_mat, inverse, shape):
     block mat : k x k 
     inverse : array like length n, 
     """
-    block_map = cartprod(inverse[0], inverse[1]).T
+    # block_map = cartprod(inverse[0], inverse[1]).T
+    block_map = cartprod(inverse, inverse).T
     mat_by_edge = block_mat[block_map[0], block_map[1]]
     full_mat = mat_by_edge.reshape(shape)
     return full_mat

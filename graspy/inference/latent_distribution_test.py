@@ -98,7 +98,11 @@ class LatentDistributionTest(BaseInference):
     def _embed(self, A1, A2):
         ase = AdjacencySpectralEmbed(n_components=self.n_components)
         X1_hat = ase.fit_transform(A1)
+        if isinstance(X1_hat, tuple):
+            X1_hat = np.concatenate(X1_hat, axis=1)
         X2_hat = ase.fit_transform(A2)
+        if isinstance(X2_hat, tuple):
+            X2_hat = np.concatenate(X2_hat, axis=1)
         return X1_hat, X2_hat
 
     def _median_heuristic(self, X1, X2):
@@ -139,10 +143,10 @@ class LatentDistributionTest(BaseInference):
         """
         A1 = import_graph(A1)
         A2 = import_graph(A2)
-        if not is_symmetric(A1) or not is_symmetric(A2):
-            raise NotImplementedError()  # TODO asymmetric case
-        if A1.shape != A2.shape:
-            raise ValueError("Input graphs do not have matching dimensions")
+        # if not is_symmetric(A1) or not is_symmetric(A2):
+        #     raise NotImplementedError()  # TODO asymmetric case
+        # if A1.shape != A2.shape:
+        #     raise ValueError("Input graphs do not have matching dimensions")
         if self.n_components is None:
             # get the last elbow from ZG for each and take the maximum
             num_dims1 = select_dimension(A1)[0][-1]
