@@ -60,10 +60,13 @@ class BaseGraphEstimator(BaseEstimator):
         check_is_fitted(self, "p_mat_")
         return 2 * np.log(self.n_verts) * self._n_parameters() - 2 * self.score(graph)
 
-    def rss(self, graph):
+    def rss(self, graph, clip=None):
         check_is_fitted(self, "p_mat_")
         graph = graph.copy()
         p_mat = self.p_mat_.copy()
+        if clip is not None:
+            p_mat[p_mat < clip] = clip
+            p_mat[p_mat > 1 - clip] = 1 - clip
         if not self.directed:
             inds = np.triu_indices_from(p_mat)
             p_mat = p_mat[inds]
@@ -72,7 +75,7 @@ class BaseGraphEstimator(BaseEstimator):
         rss = np.sum(diff)
         return rss
 
-    def mse(self, graph):
+    def mse(self, graph, clip=None):
         """
         Compute mean square error for the current model on the input graph
         
@@ -89,7 +92,7 @@ class BaseGraphEstimator(BaseEstimator):
         mse : float
             Mean square error for the model's fit P matrix
         """
-        rss = self.rss(graph)
+        rss = self.rss(graph, clip=clip)
         if not self.directed:  # TODO double check that this is right
             size = graph.shape[0] * (graph.shape[0] + 1) / 2
         else:
