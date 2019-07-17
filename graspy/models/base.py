@@ -127,6 +127,7 @@ class BaseGraphEstimator(BaseEstimator):
         check_is_fitted(self, "p_mat_")
         # P.ravel() <dot> graph * (1 - P.ravel()) <dot> (1 - graph)
         graph = import_graph(graph)
+        size = graph.shape
         if not is_unweighted(graph):
             raise ValueError("Model only implemented for unweighted graphs")
         p_mat = self.p_mat_.copy()
@@ -155,7 +156,12 @@ class BaseGraphEstimator(BaseEstimator):
         successes = np.multiply(p_mat, graph)
         failures = np.multiply((1 - p_mat), (1 - graph))
         likelihood = successes + failures
-        return np.log(likelihood)
+        likelihood = np.log(likelihood)
+        if inds is not None:
+            temp = np.zeros(size)
+            temp[inds] = likelihood
+            likelihood = temp
+        return likelihood
 
     def score(self, graph, clip=None):
         """
