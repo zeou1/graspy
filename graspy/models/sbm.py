@@ -317,7 +317,7 @@ class DCSBMEstimator(BaseGraphEstimator):
         n_components=None,
         n_blocks=2,
         n_init=1,
-        metric="mse",
+        metric=None,
         co_block=False,
         cluster_kws={},
         embed_kws={},
@@ -365,6 +365,8 @@ class DCSBMEstimator(BaseGraphEstimator):
                     if mse < best_metric:
                         best_assignments = vertex_assignments
                         best_metric = mse
+                else:
+                    best_assignments = vertex_assignments
         self.vertex_assignments_ = best_assignments
 
     def fit(self, graph, y=None):
