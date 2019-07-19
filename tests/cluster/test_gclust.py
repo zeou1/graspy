@@ -72,6 +72,12 @@ def test_inputs():
         gclust = GaussianCluster(1000, 1001)
         gclust.fit_predict(X)
 
+    with pytest.raises(ValueError):
+        gclust = GaussianCluster(n_init=-1)
+
+    with pytest.raises(TypeError):
+        gclust = GaussianCluster(n_init="2")
+
 
 def test_predict_without_fit():
     # Generate random data
