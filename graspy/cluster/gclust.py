@@ -90,6 +90,7 @@ class GaussianCluster(BaseCluster):
         max_components=None,
         covariance_type="full",
         random_state=None,
+        n_init=1,
     ):
         if isinstance(min_components, int):
             if min_components <= 0:
@@ -135,6 +136,14 @@ class GaussianCluster(BaseCluster):
                 msg += " not {}".format(cov)
                 raise ValueError(msg)
 
+        if not isinstance(n_init, int):
+            msg = "n_init must be an integer, not {}".format(type(n_init))
+            raise TypeError(msg)
+
+        if n_init < 1:
+            msg = "n_init must be greater than 0, not {}".format(n_init)
+            raise ValueError(msg)
+
         new_covariance_type = []
         for cov in ["spherical", "diag", "tied", "full"]:
             if cov in covariance_type:
@@ -144,6 +153,7 @@ class GaussianCluster(BaseCluster):
         self.max_components = max_components
         self.covariance_type = new_covariance_type
         self.random_state = random_state
+        self.n_init = n_init
 
     def fit(self, X, y=None):
         """
@@ -197,6 +207,7 @@ class GaussianCluster(BaseCluster):
             covariance_type=self.covariance_type,
             n_components=range(lower_ncomponents, upper_ncomponents + 1),
             random_state=[random_state],
+            n_init=[n_init],
         )
 
         param_grid = list(ParameterGrid(param_grid))
