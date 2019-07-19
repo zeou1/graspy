@@ -65,6 +65,10 @@ class GaussianCluster(BaseCluster):
         If None, the random number generator is the RandomState instance used
         by ``np.random``.
 
+    n_init : int, optional (default=1)
+        The number of initializations to perform for each parameter combination. The
+        best results for each parameter combination are kept.
+
     Attributes
     ----------
     n_components_ : int
