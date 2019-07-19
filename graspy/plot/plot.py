@@ -22,7 +22,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.utils import check_array, check_consistent_length
 
 from ..embed import selectSVD
-from ..utils import import_graph, pass_to_ranks
+from ..utils import import_graph, pass_to_ranks, binarize
 
 
 def _check_common_inputs(
@@ -104,8 +104,10 @@ def _transform(arr, method):
                 arr[arr > 0] = np.log10(arr[arr > 0])
         elif method in ["zero-boost", "simple-all", "simple-nonzero"]:
             arr = pass_to_ranks(arr, method=method)
+        elif method == "binarize":
+            arr = binarize(arr)
         else:
-            msg = "Transform must be one of {log, log10, zero-boost, simple-all, \
+            msg = "Transform must be one of log, log10, zero-boost, simple-all, \
             simple-nonzero, not {}.".format(
                 method
             )
@@ -443,23 +445,28 @@ def gridplot(
 
     with sns.plotting_context(context, font_scale=font_scale):
         sns.set_style("white")
-        plot = sns.relplot(
+        facet_kws = {
+            "sharex": True,
+            "sharey": True,
+            "xlim": (0, graph.shape[0] + 1),
+            "ylim": (0, graph.shape[0] + 1),
+        }
+        relplot_kws = dict(
             data=df,
             x="cdx",
             y="rdx",
             hue=legend_name,
-            size="Weights",
-            sizes=sizes,
             alpha=alpha,
             palette=palette,
             height=height,
-            facet_kws={
-                "sharex": True,
-                "sharey": True,
-                "xlim": (0, graph.shape[0] + 1),
-                "ylim": (0, graph.shape[0] + 1),
-            },
+            facet_kws=facet_kws,
+            sizes=sizes,
+            s=10
         )
+        if transform != "binarize":
+            relplot_kws["size"] = "Weights"
+
+        plot = sns.relplot(**relplot_kws)
         plot.ax.axis("off")
         plot.ax.invert_yaxis()
         if title is not None:
