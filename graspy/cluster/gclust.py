@@ -211,7 +211,7 @@ class GaussianCluster(BaseCluster):
             covariance_type=self.covariance_type,
             n_components=range(lower_ncomponents, upper_ncomponents + 1),
             random_state=[random_state],
-            n_init=[n_init],
+            n_init=[self.n_init],
         )
 
         param_grid = list(ParameterGrid(param_grid))
