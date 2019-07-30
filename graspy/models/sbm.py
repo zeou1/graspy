@@ -109,11 +109,13 @@ class SBMEstimator(BaseGraphEstimator):
 
         There are many ways to do this, here is one
         """
+        graph = symmetrize(graph)
         embed_graph = augment_diagonal(graph)
         latent = AdjacencySpectralEmbed(
             n_components=self.n_components, **self.embed_kws
         ).fit_transform(embed_graph)
-
+        if isinstance(latent, tuple):
+            latent = np.concatenate(latent, axis=-1)
         # gc = GaussianCluster(
         #     min_components=self.n_blocks,
         #     max_components=self.n_blocks,
