@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.utils import check_X_y
+from sklearn.cluster import AgglomerativeClustering
 
 from ..cluster import GaussianCluster
 from ..embed import AdjacencySpectralEmbed, LaplacianSpectralEmbed
@@ -491,3 +492,105 @@ def _block_to_full(block_mat, inverse, shape):
     mat_by_edge = block_mat[block_map[0], block_map[1]]
     full_mat = mat_by_edge.reshape(shape)
     return full_mat
+
+
+class HSBMEstimator(SBMEstimator):
+    def __init__(
+        self,
+        n_levels=2,
+        cluster_method="gmm",
+        embed_method="ase",
+        cluster_kws={},
+        embed_kws={},
+        diag_aug_weight=1,
+        n_components=None,
+        n_subgraphs=2,
+        bandwidth=None,
+    ):
+        self.n_levels = n_levels
+        self.cluster_method = cluster_method
+        self.embed_method = embed_method
+        self.n_components = n_components
+        self.n_subgraphs = n_subgraphs
+        self.bandwidth = bandwidth
+
+    def fit(self, graph, y=None):
+        # Embed the graph into Rd1
+        # Do clustering on the embedding. Number of clusters is a parameter, or fit by
+        #      bic
+        # Collect subgraphs based on clustering results
+        # For all pairs of subgraphs -
+        #      compute the MMD kernel Test statistic
+        # Cluster the dissimilarity matrix
+        # Recurse
+        embed_graph = augment_diagonal(graph, weight=self.diag_aug_weight)
+        if self.embed_method == "ase":
+            embed = AdjacencySpectralEmbed(
+                n_components=self.n_components, **self.embed_kws
+            )
+
+        latent = embed.fit_transform(embed_graph)
+        if isinstance(latent, tuple):
+            latent = np.concatenate(latent, axis=-1)
+
+        if self.cluster_method == "gmm":
+            cluster = GaussianCluster(**self.cluster_kws)
+
+        vertex_assignments = cluster.fit_predict(latent)
+
+        # labels, counts, inverse = np.unique(
+        #     vertex_assignments, return_counts=True, return_inverse=True
+        # )
+
+        sub_vert_inds, sub_inds, sub_inv = _get_block_indices(vertex_assignments)
+
+        subgraph_latents = []
+        for inds in sub_vert_inds:
+            subgraph = graph[np.ix_(inds, inds)]
+            sublatent = embed.fit_transform(subgraph)
+            if isinstance(sublatent, tuple):
+                sublatent = np.concatenate(sublatent, axis=-1)
+                subgraph_latents.append(sublatent)
+
+        subgraph_dissimilarities = _compute_subgraph_dissimilarities(
+            subgraph_latents, sub_inds, self.bandwidth
+        )
+
+        agglom = AgglomerativeClustering(
+            n_clusters=self.n_subgraphs, affinity="precomputed"
+        )
+        subgraph_short_labels = agglom.fit_predict(subgraph_dissimilarities)
+        subgraph_labels = subgraph_short_labels[sub_inv]
+        return vertex_assignments, subgraph_labels
+
+
+def _compute_subgraph_dissimilarities(subgraph_latents, subgraph_inds, bandwidth):
+    n_subgraphs = len(subgraph_inds)
+    subgraph_pairs = cartprod(subgraph_inds, subgraph_inds)
+    subgraph_dissimilarities = np.zeros((n_subgraphs, n_subgraphs))
+
+    for p in subgraph_pairs:
+        sub1 = p[0]
+        sub2 = p[1]
+        latent1 = subgraph_latents[sub1]
+        latent2 = subgraph_latents[sub2]
+        t_stat = _mmd_kernel(latent1, latent2, bandwidth)
+        subgraph_dissimilarities[sub1, sub2] = t_stat
+
+    return subgraph_dissimilarities
+
+
+def _gaussian_covariance(X, Y, bandwidth):
+    diffs = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
+    if bandwidth is None:
+        bandwidth = 0.5
+    return np.exp(-0.5 * np.sum(diffs ** 2, axis=2) / bandwidth ** 2)
+
+
+def _mmd_kernel(X, Y, bandwidth):
+    N, _ = X.shape
+    M, _ = Y.shape
+    x_stat = np.sum(_gaussian_covariance(X, X) - np.eye(N)) / (N * (N - 1))
+    y_stat = np.sum(_gaussian_covariance(Y, Y) - np.eye(M)) / (M * (M - 1))
+    xy_stat = np.sum(_gaussian_covariance(X, Y)) / (N * M)
+    return x_stat - 2 * xy_stat + y_stat
