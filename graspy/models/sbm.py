@@ -513,19 +513,18 @@ class HSBMEstimator(SBMEstimator):
         self.n_components = n_components
         self.n_subgraphs = n_subgraphs
         self.bandwidth = bandwidth
+        self.diag_aug_weight = diag_aug_weight
+        self.embed_kws = embed_kws
+        self.cluster_kws = cluster_kws
 
     def fit(self, graph, y=None):
-        # Embed the graph into Rd1
-        # Do clustering on the embedding. Number of clusters is a parameter, or fit by
-        #      bic
-        # Collect subgraphs based on clustering results
-        # For all pairs of subgraphs -
-        #      compute the MMD kernel Test statistic
-        # Cluster the dissimilarity matrix
-        # Recurse
         embed_graph = augment_diagonal(graph, weight=self.diag_aug_weight)
         if self.embed_method == "ase":
             embed = AdjacencySpectralEmbed(
+                n_components=self.n_components, **self.embed_kws
+            )
+        elif self.embed_method == "lse":
+            embed = LaplacianSpectralEmbed(
                 n_components=self.n_components, **self.embed_kws
             )
 
@@ -533,34 +532,57 @@ class HSBMEstimator(SBMEstimator):
         if isinstance(latent, tuple):
             latent = np.concatenate(latent, axis=-1)
 
+        # TODO : Probably make this normalization an option. Need to figure out when
+        #        this matters (e.g. even a non-dc hsbm that does have differing degrees
+        #        just due to block structure gets messed up by this)
+        latent = latent / np.linalg.norm(latent, axis=1)[:, np.newaxis]
+
+        # TODO : If doing the degree normalization, should we do something smarter to
+        #        consider geodesic distances on the unit ball?
+
         if self.cluster_method == "gmm":
-            cluster = GaussianCluster(**self.cluster_kws)
+            cluster = GaussianCluster(
+                min_components=1, max_components=self.n_subgraphs, **self.cluster_kws
+            )
+        # TODO : could also do kmeans here
 
-        vertex_assignments = cluster.fit_predict(latent)
-
-        # labels, counts, inverse = np.unique(
-        #     vertex_assignments, return_counts=True, return_inverse=True
-        # )
+        # TODO : this clustering should probably use many random inits and find the best
+        #        on some metric
+        vertex_assignments = cluster.fit(latent).model_.predict(latent)
 
         sub_vert_inds, sub_inds, sub_inv = _get_block_indices(vertex_assignments)
 
         subgraph_latents = []
         for inds in sub_vert_inds:
             subgraph = graph[np.ix_(inds, inds)]
+            # TODO : how to choose the number of components to embed each subgraph into?
+            #        I think they need to see the same, but check this. One option is ZG
+            #        and then take the max for all subgraphs
+            embed = AdjacencySpectralEmbed(n_components=3, **self.embed_kws)
             sublatent = embed.fit_transform(subgraph)
             if isinstance(sublatent, tuple):
                 sublatent = np.concatenate(sublatent, axis=-1)
-                subgraph_latents.append(sublatent)
+            subgraph_latents.append(sublatent)
 
+        # TODO : do we know this kernel works still, considering the W rotation matrix?
+        # TODO : consider a MGC or DCorr kernel here?
         subgraph_dissimilarities = _compute_subgraph_dissimilarities(
             subgraph_latents, sub_inds, self.bandwidth
         )
 
+        # TODO : how to choose the number of clusters here for the agglomeration step?
+        #        This will yield the number of motifs in the graph, at one level below
+        # TODO : implement grid sweep agglomerative. sweep the linkages, in this case
+        #        no randomness is needed here, I think. Could also compare multiple
+        #        embedding dims tho
         agglom = AgglomerativeClustering(
-            n_clusters=self.n_subgraphs, affinity="precomputed"
+            n_clusters=3, affinity="precomputed", linkage="average"
         )
         subgraph_short_labels = agglom.fit_predict(subgraph_dissimilarities)
         subgraph_labels = subgraph_short_labels[sub_inv]
+
+        # TODO : given the labels, can compute actual probability matrices and B mats
+        # TODO : recursive step
         return vertex_assignments, subgraph_labels
 
 
@@ -590,7 +612,7 @@ def _gaussian_covariance(X, Y, bandwidth):
 def _mmd_kernel(X, Y, bandwidth):
     N, _ = X.shape
     M, _ = Y.shape
-    x_stat = np.sum(_gaussian_covariance(X, X) - np.eye(N)) / (N * (N - 1))
-    y_stat = np.sum(_gaussian_covariance(Y, Y) - np.eye(M)) / (M * (M - 1))
-    xy_stat = np.sum(_gaussian_covariance(X, Y)) / (N * M)
+    x_stat = np.sum(_gaussian_covariance(X, X, bandwidth) - np.eye(N)) / (N * (N - 1))
+    y_stat = np.sum(_gaussian_covariance(Y, Y, bandwidth) - np.eye(M)) / (M * (M - 1))
+    xy_stat = np.sum(_gaussian_covariance(X, Y, bandwidth)) / (N * M)
     return x_stat - 2 * xy_stat + y_stat
