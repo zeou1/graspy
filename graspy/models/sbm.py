@@ -503,29 +503,35 @@ class HSBMEstimator(SBMEstimator):
         cluster_kws={},
         embed_kws={},
         diag_aug_weight=1,
-        n_components=None,
+        n_components_lvl1=None,
+        n_components_lvl2=None,
         n_subgraphs=2,
+        n_subgroups=None,
         bandwidth=None,
+        linkage="average",
     ):
         self.n_levels = n_levels
         self.cluster_method = cluster_method
         self.embed_method = embed_method
-        self.n_components = n_components
+        self.n_components_lvl1 = n_components_lvl1
+        self.n_components_lvl2 = n_components_lvl2
         self.n_subgraphs = n_subgraphs
+        self.n_subgroups = n_subgroups
         self.bandwidth = bandwidth
         self.diag_aug_weight = diag_aug_weight
         self.embed_kws = embed_kws
         self.cluster_kws = cluster_kws
+        self.linkage = linkage
 
     def fit(self, graph, y=None):
         embed_graph = augment_diagonal(graph, weight=self.diag_aug_weight)
         if self.embed_method == "ase":
             embed = AdjacencySpectralEmbed(
-                n_components=self.n_components, **self.embed_kws
+                n_components=self.n_components_lvl1, **self.embed_kws
             )
         elif self.embed_method == "lse":
             embed = LaplacianSpectralEmbed(
-                n_components=self.n_components, **self.embed_kws
+                n_components=self.n_components_lvl1, **self.embed_kws
             )
 
         latent = embed.fit_transform(embed_graph)
@@ -542,7 +548,9 @@ class HSBMEstimator(SBMEstimator):
 
         if self.cluster_method == "gmm":
             cluster = GaussianCluster(
-                min_components=1, max_components=self.n_subgraphs, **self.cluster_kws
+                min_components=self.n_subgraphs,
+                max_components=self.n_subgraphs,
+                **self.cluster_kws
             )
         # TODO : could also do kmeans here
 
@@ -558,7 +566,9 @@ class HSBMEstimator(SBMEstimator):
             # TODO : how to choose the number of components to embed each subgraph into?
             #        I think they need to see the same, but check this. One option is ZG
             #        and then take the max for all subgraphs
-            embed = AdjacencySpectralEmbed(n_components=3, **self.embed_kws)
+            embed = AdjacencySpectralEmbed(
+                n_components=self.n_components_lvl2, **self.embed_kws
+            )
             sublatent = embed.fit_transform(subgraph)
             if isinstance(sublatent, tuple):
                 sublatent = np.concatenate(sublatent, axis=-1)
@@ -576,14 +586,21 @@ class HSBMEstimator(SBMEstimator):
         #        no randomness is needed here, I think. Could also compare multiple
         #        embedding dims tho
         agglom = AgglomerativeClustering(
-            n_clusters=3, affinity="precomputed", linkage="average"
+            n_clusters=self.n_subgroups,
+            affinity="precomputed",
+            linkage=self.linkage,
+            compute_full_tree=True,
         )
         subgraph_short_labels = agglom.fit_predict(subgraph_dissimilarities)
-        subgraph_labels = subgraph_short_labels[sub_inv]
+        subgraph_types = subgraph_short_labels[sub_inv]
 
+        self.vertex_assignments_ = vertex_assignments
+        self.subgraph_types_ = subgraph_types
+        self.agglomerative_model_ = agglom
+        self.subgraph_dissimilarities_ = subgraph_dissimilarities
         # TODO : given the labels, can compute actual probability matrices and B mats
         # TODO : recursive step
-        return vertex_assignments, subgraph_labels
+        return self
 
 
 def _compute_subgraph_dissimilarities(subgraph_latents, subgraph_inds, bandwidth):
