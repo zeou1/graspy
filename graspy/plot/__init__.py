@@ -8,6 +8,14 @@ if sys.platform == "darwin":
 elif sys.platform == "linux":
     mpl.use("Agg")
 
-from .plot import heatmap, gridplot, pairplot, degreeplot, edgeplot, screeplot
+from .plot import heatmap, gridplot, pairplot, degreeplot, edgeplot, screeplot, hierplot
 
-__all__ = ["heatmap", "gridplot", "pairplot", "degreeplot", "edgeplot", "screeplot"]
+__all__ = [
+    "heatmap",
+    "gridplot",
+    "pairplot",
+    "degreeplot",
+    "edgeplot",
+    "screeplot",
+    "hierplot",
+]

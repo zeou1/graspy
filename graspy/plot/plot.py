@@ -20,6 +20,7 @@ import pandas as pd
 import seaborn as sns
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.utils import check_array, check_consistent_length
+from scipy.cluster.hierarchy import dendrogram, linkage
 
 from ..embed import selectSVD
 from ..utils import import_graph, pass_to_ranks
@@ -1107,3 +1108,49 @@ def _plot_brackets(
         ax.set_yticklabels(group_names, fontsize=fontsize, verticalalignment="center")
         ax.set_ylim(0, max_size)
         ax.invert_yaxis()
+
+
+def hierplot(
+    distance_matrix,
+    dendrogram_size="45%",
+    figsize=(10, 10),
+    dendrogram_kws={},
+    heatmap_kws={},
+):
+    dendrogram_kws["distance_sort"] = "descending"
+    dendrogram_kws["color_threshold"] = 0
+    dendrogram_kws["above_threshold_color"] = "k"
+
+    inds = np.triu_indices_from(distance_matrix, k=1)
+    condensed_distances = distance_matrix[inds]
+    linkage_mat = linkage(condensed_distances, method="average")
+    R = dendrogram(linkage_mat, no_plot=True, distance_sort="descending")
+    # R = plot_dendrogram(model, no_plot=True, distance_sort="descending")
+    inds = R["leaves"]
+    distance_matrix = distance_matrix[np.ix_(inds, inds)]
+
+    plt.figure(figsize=figsize)
+    ax = sns.heatmap(
+        distance_matrix,
+        cbar=False,
+        square=True,
+        xticklabels=False,
+        yticklabels=False,
+        **heatmap_kws
+    )
+
+    divider = make_axes_locatable(ax)
+
+    ax_x = divider.new_vertical(size=dendrogram_size, pack_start=False, pad=0.1)
+    ax.figure.add_axes(ax_x)
+    # plot_dendrogram(model, ax=ax_x, **dendrogram_kws)
+    dendrogram(linkage_mat, ax=ax_x, **dendrogram_kws)
+    ax_x.axis("off")
+
+    ax_y = divider.new_horizontal(size=dendrogram_size, pack_start=True, pad=0.1)
+    ax.figure.add_axes(ax_y)
+    # R = plot_dendrogram(model, ax=ax_y, orientation="left", **dendrogram_kws)
+    dendrogram(linkage_mat, ax=ax_y, orientation="left", **dendrogram_kws)
+    ax_y.axis("off")
+    ax_y.invert_yaxis()
+    return ax
