@@ -15,6 +15,7 @@
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score, silhouette_score
+from spherecluster import SphericalKMeans
 
 from .base import BaseCluster
 
@@ -55,7 +56,9 @@ class KMeansCluster(BaseCluster):
         all possible number of clusters given by ``range(2, max_clusters)``.
     """
 
-    def __init__(self, max_clusters=2, random_state=None):
+    def __init__(
+        self, max_clusters=2, random_state=None, method="standard", kmeans_kws={}
+    ):
         if isinstance(max_clusters, int):
             if max_clusters <= 1:
                 msg = "n_components must be >= 2 or None."
@@ -66,6 +69,8 @@ class KMeansCluster(BaseCluster):
             msg = "max_clusters must be an integer, not {}.".format(type(max_clusters))
             raise TypeError(msg)
         self.random_state = random_state
+        self.method = method
+        self.kmeans_kws = kmeans_kws
 
     def fit(self, X, y=None):
         """
@@ -102,7 +107,14 @@ class KMeansCluster(BaseCluster):
         silhouettes = []
         aris = []
         for n in range(2, max_clusters + 1):
-            model = KMeans(n_clusters=n, random_state=random_state)
+            if self.method == "standard":
+                model = KMeans(
+                    n_clusters=n, random_state=random_state, **self.kmeans_kws
+                )
+            if self.method == "spherical":
+                model = SphericalKMeans(
+                    n_clusters=n, random_state=random_state, **self.kmeans_kws
+                )
 
             # Fit and compute values
             predictions = model.fit_predict(X)

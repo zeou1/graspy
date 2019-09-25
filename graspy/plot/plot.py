@@ -22,7 +22,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.utils import check_array, check_consistent_length
 from scipy.cluster.hierarchy import dendrogram, linkage
 
-from ..embed import selectSVD
+from ..embed import selectSVD, select_dimension
 from ..utils import import_graph, pass_to_ranks
 
 
@@ -840,6 +840,7 @@ def screeplot(
     figsize=(10, 5),
     cumulative=True,
     show_first=None,
+    n_elbows=2,
 ):
     r"""
     Plots the distribution of singular values for a matrix, either showing the 
@@ -879,6 +880,8 @@ def screeplot(
         msg = "cumulative must be a boolean"
         raise TypeError(msg)
     _, D, _ = selectSVD(X, n_components=X.shape[1], algorithm="full")
+    elbow_locs, elbow_vals = select_dimension(X, n_elbows=n_elbows)
+    elbow_locs = np.array(elbow_locs)
     D /= D.sum()
     if cumulative:
         y = np.cumsum(D[:show_first])
@@ -887,12 +890,18 @@ def screeplot(
     _ = plt.figure(figsize=figsize)
     ax = plt.gca()
     xlabel = "Component"
-    ylabel = "Variance explained"
+    if cumulative:
+        ylabel = "Variance explained"
+    else:
+        ylabel = "Normalized singular value"
     with sns.plotting_context(context=context, font_scale=font_scale):
-        plt.plot(y)
+        rng = range(1, len(y) + 1)
+        plt.scatter(rng, y)
         plt.title(title)
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
+        plt.scatter(elbow_locs, y[elbow_locs - 1], c="r")
+        plt.ylim((y.min() - y.min() / 10, y.max() + (y.max() / 10)))
     return ax
 
 
@@ -1092,7 +1101,7 @@ def _plot_brackets(
             ax.patch.set_alpha(0)
     ax.set_yticks([])
     ax.set_xticks([])
-    ax.tick_params(axis=axis, which=u"both", length=0, pad=7)
+    ax.tick_params(axis=axis, which="both", length=0, pad=7)
     for direction in ["left", "right", "bottom", "top"]:
         ax.spines[direction].set_visible(False)
     if axis == "x":
@@ -1132,11 +1141,12 @@ def hierplot(
     plt.figure(figsize=figsize)
     ax = sns.heatmap(
         distance_matrix,
-        cbar=False,
+        cbar=True,
         square=True,
-        xticklabels=False,
+        xticklabels=True,
         yticklabels=False,
-        **heatmap_kws
+        cbar_kws=dict(shrink=0.5),
+        **heatmap_kws,
     )
 
     divider = make_axes_locatable(ax)

@@ -1,8 +1,9 @@
 import numpy as np
 from sklearn.utils import check_X_y
 from sklearn.cluster import AgglomerativeClustering
+from spherecluster import SphericalKMeans
 
-from ..cluster import GaussianCluster
+from ..cluster import GaussianCluster, KMeansCluster
 from ..embed import AdjacencySpectralEmbed, LaplacianSpectralEmbed
 from ..utils import (
     augment_diagonal,
@@ -509,7 +510,9 @@ class HSBMEstimator(SBMEstimator):
         n_subgroups=None,
         bandwidth=None,
         linkage="average",
+        n_elbows=1,
     ):
+        # TODO : input checking
         self.n_levels = n_levels
         self.cluster_method = cluster_method
         self.embed_method = embed_method
@@ -522,16 +525,21 @@ class HSBMEstimator(SBMEstimator):
         self.embed_kws = embed_kws
         self.cluster_kws = cluster_kws
         self.linkage = linkage
+        self.n_elbows = n_elbows
 
     def fit(self, graph, y=None):
         embed_graph = augment_diagonal(graph, weight=self.diag_aug_weight)
         if self.embed_method == "ase":
             embed = AdjacencySpectralEmbed(
-                n_components=self.n_components_lvl1, **self.embed_kws
+                n_components=self.n_components_lvl1,
+                n_elbows=self.n_elbows,
+                **self.embed_kws
             )
         elif self.embed_method == "lse":
             embed = LaplacianSpectralEmbed(
-                n_components=self.n_components_lvl1, **self.embed_kws
+                n_components=self.n_components_lvl1,
+                n_elbows=self.n_elbows,
+                **self.embed_kws
             )
 
         latent = embed.fit_transform(embed_graph)
@@ -545,6 +553,7 @@ class HSBMEstimator(SBMEstimator):
 
         # TODO : If doing the degree normalization, should we do something smarter to
         #        consider geodesic distances on the unit ball?
+        self.latent_ = latent
 
         if self.cluster_method == "gmm":
             cluster = GaussianCluster(
@@ -552,7 +561,10 @@ class HSBMEstimator(SBMEstimator):
                 max_components=self.n_subgraphs,
                 **self.cluster_kws
             )
-        # TODO : could also do kmeans here
+        if self.cluster_method == "sphere-kmeans":
+            cluster = KMeansCluster(
+                max_clusters=self.n_subgraphs, kmeans_kws=self.cluster_kws
+            )
 
         # TODO : this clustering should probably use many random inits and find the best
         #        on some metric
@@ -560,12 +572,28 @@ class HSBMEstimator(SBMEstimator):
 
         sub_vert_inds, sub_inds, sub_inv = _get_block_indices(vertex_assignments)
 
+        # TODO : this is a super janky way of finding the maximum dimension chosen by ZG
+        max_dim = 0
+        if self.n_components_lvl2 is None:
+            for inds in sub_vert_inds:
+                subgraph = graph[np.ix_(inds, inds)]
+                embed = AdjacencySpectralEmbed(n_components=None, **self.embed_kws)
+                sublatent = embed.fit_transform(subgraph)
+                if isinstance(sublatent, tuple):
+                    sublatent = np.concatenate(sublatent, axis=-1)
+                if max_dim < sublatent.shape[1]:
+                    max_dim = sublatent.shape[1]
+            self.n_components_lvl2 = max_dim
+
         subgraph_latents = []
+        subgraphs = []
         for inds in sub_vert_inds:
-            subgraph = graph[np.ix_(inds, inds)]
             # TODO : how to choose the number of components to embed each subgraph into?
             #        I think they need to see the same, but check this. One option is ZG
             #        and then take the max for all subgraphs
+            subgraph = graph[np.ix_(inds, inds)]
+            subgraphs.append(subgraph)
+
             embed = AdjacencySpectralEmbed(
                 n_components=self.n_components_lvl2, **self.embed_kws
             )
@@ -592,12 +620,15 @@ class HSBMEstimator(SBMEstimator):
             compute_full_tree=True,
         )
         subgraph_short_labels = agglom.fit_predict(subgraph_dissimilarities)
-        subgraph_types = subgraph_short_labels[sub_inv]
+        subgraph_labels = subgraph_short_labels[sub_inv]
 
         self.vertex_assignments_ = vertex_assignments
-        self.subgraph_types_ = subgraph_types
+        self.subgraph_labels_ = subgraph_labels
         self.agglomerative_model_ = agglom
         self.subgraph_dissimilarities_ = subgraph_dissimilarities
+        self.subgraph_latents_ = subgraph_latents
+        self.subgraphs_ = subgraphs
+
         # TODO : given the labels, can compute actual probability matrices and B mats
         # TODO : recursive step
         return self
