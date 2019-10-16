@@ -1066,7 +1066,7 @@ def _plot_groups(ax, graph, inner_labels, outer_labels=None, fontsize=30):
 
     if plot_outer:
         # top outer curves
-        pad_scalar = 0.35 / 30 * fontsize
+        pad_scalar = 1.5 / 30 * fontsize
         ax_x2 = divider.new_vertical(size="5%", pad=pad_scalar, pack_start=False)
         ax.figure.add_axes(ax_x2)
         _plot_brackets(
@@ -1110,17 +1110,23 @@ def _plot_brackets(
             ax.patch.set_alpha(0)
     ax.set_yticks([])
     ax.set_xticks([])
-    ax.tick_params(axis=axis, which=u"both", length=0, pad=7)
+    ax.tick_params(axis=axis, which=u"both", length=0, pad=10)
     for direction in ["left", "right", "bottom", "top"]:
         ax.spines[direction].set_visible(False)
     if axis == "x":
         ax.set_xticks(tick_loc)
-        ax.set_xticklabels(group_names, fontsize=fontsize, verticalalignment="center")
+        ax.set_xticklabels(
+            group_names,
+            fontsize=fontsize,
+            verticalalignment="center",
+            rotation=45,
+            rotation_mode="anchor",
+        )
         ax.xaxis.set_label_position("top")
         ax.xaxis.tick_top()
-        ax.xaxis.labelpad = 30
+        ax.xaxis.labelpad = 400
         ax.set_xlim(0, max_size)
-        ax.tick_params(axis="x", which="major", pad=5 + fontsize / 4)
+        ax.tick_params(axis="x", which="major", pad=15)
     elif axis == "y":
         ax.set_yticks(tick_loc)
         ax.set_yticklabels(group_names, fontsize=fontsize, verticalalignment="center")
