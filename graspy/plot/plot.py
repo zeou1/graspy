@@ -994,8 +994,11 @@ def _plot_groups(ax, graph, inner_labels, outer_labels=None, fontsize=30):
     if outer_labels is None:
         outer_labels = np.ones_like(inner_labels)
         plot_outer = False
+    else:
+        outer_labels = np.array(outer_labels)
 
     sorted_inds = _sort_inds(graph, inner_labels, outer_labels, False)
+
     inner_labels = inner_labels[sorted_inds]
     outer_labels = outer_labels[sorted_inds]
 
@@ -1066,7 +1069,7 @@ def _plot_groups(ax, graph, inner_labels, outer_labels=None, fontsize=30):
 
     if plot_outer:
         # top outer curves
-        pad_scalar = 1.5 / 30 * fontsize
+        pad_scalar = 2.5 / 30 * fontsize
         ax_x2 = divider.new_vertical(size="5%", pad=pad_scalar, pack_start=False)
         ax.figure.add_axes(ax_x2)
         _plot_brackets(
@@ -1118,15 +1121,16 @@ def _plot_brackets(
         ax.set_xticklabels(
             group_names,
             fontsize=fontsize,
-            verticalalignment="center",
+            verticalalignment="bottom",
+            horizontalalignment="left",
             rotation=45,
             rotation_mode="anchor",
         )
         ax.xaxis.set_label_position("top")
         ax.xaxis.tick_top()
-        ax.xaxis.labelpad = 400
+        # ax.xaxis.labelpad = 200
         ax.set_xlim(0, max_size)
-        ax.tick_params(axis="x", which="major", pad=15)
+        ax.tick_params(axis="x", which="major", pad=5)
     elif axis == "y":
         ax.set_yticks(tick_loc)
         ax.set_yticklabels(group_names, fontsize=fontsize, verticalalignment="center")
