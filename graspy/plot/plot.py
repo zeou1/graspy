@@ -166,7 +166,7 @@ def heatmap(
     ax=None,
     title_pad=None,
     sort_nodes=False,
-    outer_pad=30
+    outer_pad=30,
 ):
     r"""
     Plots a graph as a color-encoded matrix.
@@ -344,7 +344,7 @@ def heatmap(
                     inner_hier_labels,
                     outer_hier_labels,
                     fontsize=hier_label_fontsize,
-                    outer_pad=outer_pad
+                    outer_pad=outer_pad,
                 )
             else:
                 _plot_groups(plot, arr, inner_hier_labels, fontsize=hier_label_fontsize)
@@ -1088,7 +1088,7 @@ def _plot_groups(ax, graph, inner_labels, outer_labels=None, fontsize=30, outer_
             fontsize,
         )
         # side outer curves
-        #1.4 * pad_scalar
+        # 1.4 * pad_scalar
         ax_y2 = divider.new_horizontal(size="5%", pad=outer_pad, pack_start=True)
         ax.figure.add_axes(ax_y2)
         _plot_brackets(
