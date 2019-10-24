@@ -441,6 +441,8 @@ def gridplot(
 
     if isinstance(X, list):
         graphs = [import_graph(x) for x in X]
+    elif isinstance(X, np.ndarray):
+        graphs = [import_graph(X)]
     else:
         msg = "X must be a list, not {}.".format(type(X))
         raise TypeError(msg)
@@ -1061,7 +1063,7 @@ def _plot_groups(ax, graph, inner_labels, outer_labels=None, fontsize=30):
 
     if plot_outer:
         # top outer curves
-        pad_scalar = 2.5 / 30 * fontsize
+        pad_scalar = 1.2 / 30 * fontsize
         ax_x2 = divider.new_vertical(size="5%", pad=pad_scalar, pack_start=False)
         ax.figure.add_axes(ax_x2)
         _plot_brackets(
@@ -1076,7 +1078,7 @@ def _plot_groups(ax, graph, inner_labels, outer_labels=None, fontsize=30):
             fontsize,
         )
         # side outer curves
-        ax_y2 = divider.new_horizontal(size="5%", pad=pad_scalar, pack_start=True)
+        ax_y2 = divider.new_horizontal(size="5%", pad=1.4 * pad_scalar, pack_start=True)
         ax.figure.add_axes(ax_y2)
         _plot_brackets(
             ax_y2,
@@ -1113,7 +1115,7 @@ def _plot_brackets(
         ax.set_xticklabels(
             group_names,
             fontsize=fontsize,
-            verticalalignment="bottom",
+            verticalalignment="center",
             horizontalalignment="left",
             rotation=45,
             rotation_mode="anchor",
