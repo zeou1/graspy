@@ -166,7 +166,7 @@ def heatmap(
     ax=None,
     title_pad=None,
     sort_nodes=False,
-    outer_pad=30,
+    outer_pad=0.5,
 ):
     r"""
     Plots a graph as a color-encoded matrix.
@@ -992,7 +992,9 @@ def _unique_like(vals):
 
 
 # assume that the graph has already been plotted in sorted form
-def _plot_groups(ax, graph, inner_labels, outer_labels=None, fontsize=30, outer_pad=20):
+def _plot_groups(
+    ax, graph, inner_labels, outer_labels=None, fontsize=30, outer_pad=0.5
+):
     inner_labels = np.array(inner_labels)
     plot_outer = True
     if outer_labels is None:
