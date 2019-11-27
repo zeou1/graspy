@@ -214,8 +214,8 @@ class FastApproximateQAP:
                 P = P_i1
                 n_iter += 1
 
-                print(f"Completed iteration {n_iter}")
-                print(f"Delta P is {grad_P}")
+            print(f"Completed on iteration {n_iter}")
+            print(f"Delta P is {grad_P}")
 
             # end of FW optimization loop
 
