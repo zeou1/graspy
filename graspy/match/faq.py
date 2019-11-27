@@ -56,6 +56,9 @@ class FastApproximateQAP:
         A positive, threshold stopping criteria such that FW continues to iterate
         while Frobenius norm of (P[i]-P[i+1]) > eps
 
+    maximize : boolean (default = False)
+        Whether to maximize the objective function instead (do graph matching)
+
     Attributes
     ----------
     
@@ -84,7 +87,8 @@ class FastApproximateQAP:
         init_method="barycenter",
         max_iter=30,
         shuffle_input=True,
-        eps=0.1,
+        eps=0.01,
+        maximize=False,
     ):
 
         if n_init > 0 and type(n_init) is int:
@@ -115,6 +119,7 @@ class FastApproximateQAP:
         else:
             msg = '"eps" must be a positive float'
             raise TypeError(msg)
+        self.maximize = maximize
 
     def fit(self, A, B):
         """
@@ -156,10 +161,15 @@ class FastApproximateQAP:
         Bt = np.transpose(B)  # B transpose
         score = math.inf
         perm_inds = np.zeros(n)
-        grad_P = 1  # gradient of P
-        n_iter = 0  # number of FW iterations
+
+        if self.maximize:
+            scalar = -1
+        else:
+            scalar = 1
 
         for i in range(self.n_init):
+            grad_P = 1  # gradient of P
+            n_iter = 0  # number of FW iterations
 
             # setting initialization matrix
             if self.init_method == "rand":
@@ -179,7 +189,7 @@ class FastApproximateQAP:
             # OPTIMIZATION WHILE LOOP BEGINS
             while grad_P > self.eps and n_iter < self.max_iter:
 
-                delta_f = (
+                delta_f = scalar * (
                     A @ P @ Bt + At @ P @ B
                 )  # computing the gradient of f(P) = -tr(APB^tP^t)
                 rows, cols = linear_sum_assignment(
@@ -189,7 +199,7 @@ class FastApproximateQAP:
                 Q[rows, cols] = 1  # initialize search direction matrix Q
 
                 def f(x):  # computing the original optimization function
-                    return np.trace(
+                    return scalar * np.trace(
                         At
                         @ (x * P + (1 - x) * Q)
                         @ B
@@ -203,6 +213,10 @@ class FastApproximateQAP:
                 grad_P = np.linalg.norm(P - P_i1)
                 P = P_i1
                 n_iter += 1
+
+                print(f"Completed iteration {n_iter}")
+                print(f"Delta P is {grad_P}")
+
             # end of FW optimization loop
 
             row, perm_inds_new = linear_sum_assignment(
@@ -210,7 +224,7 @@ class FastApproximateQAP:
             )  # Project onto the set of permutation matrices
             perm_mat_new = np.zeros((n, n))  # initiate a nxn matrix of zeros
             perm_mat_new[row, perm_inds_new] = 1  # set indices of permutation to 1
-            score_new = np.trace(
+            score_new = scalar * np.trace(
                 np.transpose(A) @ perm_mat_new @ B @ np.transpose(perm_mat_new)
             )  # computing objective function value
 
@@ -247,4 +261,14 @@ class FastApproximateQAP:
             The optimal permutation indices to minimize the objective function
         """
         self.fit(A, B)
-        return self.perm_inds_
+        perm_inds = self.perm_inds_
+        P = _perm_inds_to_mat(perm_inds)
+        B = P @ B @ P.T
+        return A, B
+
+
+def _perm_inds_to_mat(perm_inds):
+    n = len(perm_inds)
+    P = np.zeros((n, n))
+    P[range(n), perm_inds] = 1
+    return P
