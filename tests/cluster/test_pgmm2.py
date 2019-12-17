@@ -4,14 +4,19 @@ from graspy.cluster.pgmm import PartitionalGaussianCluster
 import numpy as np
 import matplotlib.pyplot as plt
 
-pgmm = PartitionalGaussianCluster(max_components=2)
+pgmm = PartitionalGaussianCluster(max_components=4)
 
+#%%
+
+X = np.random.normal(0, 1, size=(20, 3))
+y = pgmm.fit(X)
+raise ValueError
 # %%
 
-x0 = np.random.multivariate_normal([0,0],np.eye(2),size=[10])
-x1 = np.random.multivariate_normal([5,5],np.eye(2),size=[10])
-x = np.concatenate((x0,x1),axis=0)
+x0 = np.array([[-11.11,-11.09,-10.91,-10.89,-9.11,-9.09,-8.91,-8.89,
+                11.11,11.09,10.91,10.89,9.11,9.09,8.91,8.89]]).T
 
+x = np.concatenate((x0,x0),axis=1)
 n_samples = x.shape[0]
 
 y = pgmm.fit(x)
@@ -58,3 +63,5 @@ axes[2].scatter(x[:,0],x[:,1],c=cs,cmap='Set1')
 axes[2].set_title('Final Partition')
 
 plt.show()
+
+# %%
