@@ -32,6 +32,7 @@ def test_inputs():
         pclust = PartitionalGaussianCluster(1001)
         pclust.fit(X)
 
+
 def test_predict_without_fit():
     # Generate random data
     X = np.random.normal(0, 1, size=(20, 3))
@@ -54,10 +55,13 @@ def test_no_y():
     pclust = PartitionalGaussianCluster(n_init=2)
     pclust.fit(X)
 
-    inrange = (pclust.n_components_ >= 1) and (pclust.n_components_ <= n*2)
+    inrange = (pclust.n_components_ >= 1) and (pclust.n_components_ <= n * 2)
 
     assert_equal(inrange, True)
 
+
+# at each level, a cluster should be split into no more than
+# [max_components] clusters
 def test_uniqueperlevel():
     # Generate random data
     X = np.random.normal(0, 1, size=(20, 3))
@@ -68,23 +72,47 @@ def test_uniqueperlevel():
     n_samples = y.shape[0]
     levels = y.shape[1]
 
-    for level in range(1,levels):
-        clusters = np.unique(y[:,:level], axis=0)
+    for level in range(1, levels):
+        clusters = np.unique(y[:, :level], axis=0)
 
         for cluster in clusters:
-            cluster_idxs = [(y[i,:level] == cluster).all() for i in range(n_samples)]
-            cluster_labels = y[cluster_idxs,level]
+            # for all data points in the same cluster up to a certain level
+            cluster_idxs = [(y[i, :level] == cluster).all() for i in range(n_samples)]
+            cluster_labels = y[cluster_idxs, level]  # labels at next level
             n_unq = len(np.unique(cluster_labels))
 
             mx_labels = n_unq <= mx
-            assert_equal(mx_labels,True)
+            assert_equal(mx_labels, True)
 
+
+# this data involves a nested hierarchy of two clusters, so pgmm
+# with max_components=2 should naturally split this data
 def test_structuredinput():
     np.random.seed(2)
-    x0 = np.array([[-11.11,-11.09,-10.91,-10.89,-9.11,-9.09,-8.91,-8.89,
-                11.11,11.09,10.91,10.89,9.11,9.09,8.91,8.89]]).T
+    x0 = np.array(
+        [
+            [
+                -11.11,
+                -11.09,
+                -10.91,
+                -10.89,
+                -9.11,
+                -9.09,
+                -8.91,
+                -8.89,
+                11.11,
+                11.09,
+                10.91,
+                10.89,
+                9.11,
+                9.09,
+                8.91,
+                8.89,
+            ]
+        ]
+    ).T
 
-    x = np.concatenate((x0,x0),axis=1)
+    x = np.concatenate((x0, x0), axis=1)
 
     pclust = PartitionalGaussianCluster(max_components=2)
 
@@ -93,20 +121,19 @@ def test_structuredinput():
     n_samples = y.shape[0]
     levels = y.shape[1]
 
-    for level in range(1,levels-1):
-        clusters = np.unique(y[:,:level], axis=0)
+    for level in range(1, levels):
+        clusters = np.unique(y[:, :level], axis=0)
 
         for cluster in clusters:
-            cluster_idxs = [(y[i,:level] == cluster).all() for i in range(n_samples)]
-            cluster_labels = y[cluster_idxs,level-1]
+            # for all data points in the same cluster up to a certain level
+            cluster_idxs = [(y[i, :level] == cluster).all() for i in range(n_samples)]
+            cluster_labels = y[cluster_idxs, level]  # labels at next level
 
-            unq = np.unique(cluster_labels)
-            assert_equal(len(unq),2)
+            first_half = cluster_labels[: int(len(cluster_labels) / 2)]
+            second_half = cluster_labels[int(len(cluster_labels) / 2) :]
 
+            # check that each half of data points is put into the same cluster
+            first_cluster = (first_half == cluster_labels[0]).all()
+            second_cluster = (second_half == cluster_labels[-1]).all()
 
-
-
-
-
-
-
+            assert_equal((first_cluster and second_cluster), True)

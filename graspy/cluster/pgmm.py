@@ -181,46 +181,51 @@ class PartitionalGaussianCluster(BaseCluster):
             raise ValueError(msg)
 
         n_samples = X.shape[0]
-        #first column is all 0s (all data points together)
-        y = np.zeros([n_samples,1])
-        complete = np.zeros([n_samples,1])
+        # first column is all 0s (all data points together)
+        y = np.zeros([n_samples, 1])
+        complete = np.zeros([n_samples, 1])
 
-        default_params = {'max_components' : self.max_components,
-                'covariance_type' : self.covariance_type, 'tol' : self.tol, 
-                'reg_covar' : self.reg_covar, 'max_iter' : self.max_iter,
-                'n_init' : self.n_init, 'init_params' : self.init_params,
-                'random_state' : self.random_state}
+        default_params = {
+            "max_components": self.max_components,
+            "covariance_type": self.covariance_type,
+            "tol": self.tol,
+            "reg_covar": self.reg_covar,
+            "max_iter": self.max_iter,
+            "n_init": self.n_init,
+            "init_params": self.init_params,
+            "random_state": self.random_state,
+        }
 
         counter = 0
         while not np.all(complete == 1):
             counter = counter + 1
-            print('Partition level: ' + str(counter))
+            print("Partition level: " + str(counter))
 
-            #unique partition "histories"
-            #e.g. [0,1,0] and [0,0,0] were partitioned
-            #in the first iteration
+            # unique partition "histories"
+            # e.g. [0,1,0] and [0,0,0] were partitioned
+            # in the first iteration
             clusters = np.unique(y, axis=0)
-            y = np.concatenate((y,np.zeros([n_samples,1])), axis=1)
+            y = np.concatenate((y, np.zeros([n_samples, 1])), axis=1)
 
             for cluster in clusters:
-                #get all data points in the same partition/leaf
-                cluster_idxs = [(y[i,:-1] == cluster).all() for i in range(n_samples)]
-                #remove points that are 'complete'
-                cluster_idxs = cluster_idxs & (complete[:,-1] == 0)
+                # get all data points in the same partition/leaf
+                cluster_idxs = [(y[i, :-1] == cluster).all() for i in range(n_samples)]
+                # remove points that are 'complete'
+                cluster_idxs = cluster_idxs & (complete[:, -1] == 0)
 
-                #all of these indices have finished
+                # all of these indices have finished
                 if np.sum(cluster_idxs) == 0:
                     continue
-                
-                #data points in this cluster
-                X_c = X[cluster_idxs,:]
 
-                #may need to modify max number of clusters
-                #to the number of data points
-                #TODO: change max components to be limited according to dimension etc
-                if default_params['max_components'] > np.sum(cluster_idxs):
+                # data points in this cluster
+                X_c = X[cluster_idxs, :]
+
+                # may need to modify max number of clusters
+                # to the number of data points
+                # TODO: change max components to be limited according to dimension etc
+                if default_params["max_components"] > np.sum(cluster_idxs):
                     params = default_params
-                    params['max_components'] = int(np.sum(cluster_idxs))
+                    params["max_components"] = int(np.sum(cluster_idxs))
                 else:
                     params = default_params
 
@@ -228,21 +233,23 @@ class PartitionalGaussianCluster(BaseCluster):
 
                 labels = gclust.fit_predict(X_c)
 
-                y[cluster_idxs,-1] = labels
+                y[cluster_idxs, -1] = labels
 
-                [_,unq_idxs,unq_counts]  = np.unique(labels, return_index=True,return_counts=True)
-                
-                #for points that were assigned their own cluster
-                #mark them as complete
-                for l,count in enumerate(unq_counts):
+                [_, unq_idxs, unq_counts] = np.unique(
+                    labels, return_index=True, return_counts=True
+                )
+
+                # for points that were assigned their own cluster
+                # mark them as complete
+                for l, count in enumerate(unq_counts):
                     if count == 1:
                         orig_idxs = np.argwhere(cluster_idxs)
-                        complete[orig_idxs[unq_idxs[l]],-1] = 1
+                        complete[orig_idxs[unq_idxs[l]], -1] = 1
 
-                #if BIC said that one component was best
-                #mark all points as complete
+                # if BIC said that one component was best
+                # mark all points as complete
                 if gclust.n_components_ == 1:
-                    complete[cluster_idxs,-1] = 1
+                    complete[cluster_idxs, -1] = 1
 
         self.n_components_ = len(np.unique(y, axis=1))
 
