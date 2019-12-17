@@ -32,29 +32,6 @@ def test_inputs():
         pclust = PartitionalGaussianCluster(1001)
         pclust.fit(X)
 
-def test_uniqueperlevel():
-    # Generate random data
-    X = np.random.normal(0, 1, size=(20, 3))
-    mx = 3
-    pclust = PartitionalGaussianCluster(max_components=mx)
-    y = pclust.fit(X)
-
-    n_samples = y.shape[0]
-    levels = y.shape[1]
-
-    for level in range(1,levels+1):
-        clusters = np.unique(y[:,:level], axis=0)
-        print(clusters)
-
-        for cluster in clusters:
-            cluster_idxs = [(y[i,:level] == cluster).all() for i in range(n_samples)]
-            cluster_labels = y[cluster_idxs,level-1]
-
-            unq = np.unique(cluster_labels)
-
-            mx_labels = unq <= mx
-            assert_equal(mx_labels,True)
-
 def test_predict_without_fit():
     # Generate random data
     X = np.random.normal(0, 1, size=(20, 3))
@@ -81,6 +58,27 @@ def test_no_y():
 
     assert_equal(inrange, True)
 
+def test_uniqueperlevel():
+    # Generate random data
+    X = np.random.normal(0, 1, size=(20, 3))
+    mx = 3
+    pclust = PartitionalGaussianCluster(max_components=mx)
+    y = pclust.fit(X)
+
+    n_samples = y.shape[0]
+    levels = y.shape[1]
+
+    for level in range(1,levels):
+        clusters = np.unique(y[:,:level], axis=0)
+
+        for cluster in clusters:
+            cluster_idxs = [(y[i,:level] == cluster).all() for i in range(n_samples)]
+            cluster_labels = y[cluster_idxs,level]
+            n_unq = len(np.unique(cluster_labels))
+
+            mx_labels = n_unq <= mx
+            assert_equal(mx_labels,True)
+
 def test_structuredinput():
     np.random.seed(2)
     x0 = np.array([[-11.11,-11.09,-10.91,-10.89,-9.11,-9.09,-8.91,-8.89,
@@ -91,6 +89,23 @@ def test_structuredinput():
     pclust = PartitionalGaussianCluster(max_components=2)
 
     y = pclust.fit(x)
+
+    n_samples = y.shape[0]
+    levels = y.shape[1]
+
+    for level in range(1,levels-1):
+        clusters = np.unique(y[:,:level], axis=0)
+
+        for cluster in clusters:
+            cluster_idxs = [(y[i,:level] == cluster).all() for i in range(n_samples)]
+            cluster_labels = y[cluster_idxs,level-1]
+
+            unq = np.unique(cluster_labels)
+            assert_equal(len(unq),2)
+
+
+
+
 
 
 
