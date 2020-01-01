@@ -117,10 +117,7 @@ class SignalSubgraph:
         verts = np.shape(self.graphs)[0]
         sigmat = np.array(
             [
-                [
-                    fisher_exact(self.contmat_[i, j, :, :])[1]
-                    for j in range(verts)
-                ]
+                [fisher_exact(self.contmat_[i, j, :, :])[1] for j in range(verts)]
                 for i in range(verts)
             ]
         )
@@ -146,9 +143,7 @@ class SignalSubgraph:
                 blank = sigmat
                 blank = blank > w
 
-                score = 2 * verts - (
-                    np.sum(blank, axis=1) + np.sum(blank, axis=0)
-                )
+                score = 2 * verts - (np.sum(blank, axis=1) + np.sum(blank, axis=0))
                 vscore = np.sort(score)[::-1]
                 vstars = np.argsort(score)[::-1]
 
@@ -161,9 +156,7 @@ class SignalSubgraph:
                     blank[:, vstars] = sigmat[:, vstars]
 
                     indsp = np.dstack(
-                        np.unravel_index(
-                            np.argsort(blank.ravel()), np.shape(blank)
-                        )
+                        np.unravel_index(np.argsort(blank.ravel()), np.shape(blank))
                     )
                     sigsub = indsp[0, :nedges, :]
                     sigsub = tuple(np.transpose(sigsub))
