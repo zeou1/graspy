@@ -3,32 +3,38 @@ from scipy.stats import fisher_exact
 
 
 class SignalSubgraph:
-    """
-    Estimate the signal-subgraph of a set of labeled graph samples.
-    
-    The incoherent estimator finds the signal-subgraph, constrained by the number of edges.
-    The coherent estimator finds the signal-subgraph, constrained by the number of edges and by the number of vertices that the edges in the signal-subgraph may be incident to.
+    """Estimate the signal-subgraph of a set of labeled graph samples.
+
+    The incoherent estimator finds the signal-subgraph, constrained by the
+    number of edges. The coherent estimator finds the signal-subgraph,
+    constrained by the number of edges and by the number of vertices that
+    the edges in the signal-subgraph may be incident to.
 
     Parameters
     ----------
     graphs: array-like, shape (n_vertices, n_vertices, s_samples)
-        A series of labeled (n_vertices, n_vertices) unweighted graph samples. If undirected, the upper or lower triangle matrices should be used.      
+        A series of labeled (n_vertices, n_vertices) unweighted graph samples.
+        If undirected, the upper or lower triangle matrices should be used.
     labels: vector, length (s_samples)
         A vector of class labels. There must be a maximum of two classes.
-         
+
     Attributes
     ----------
     contmat_: array-like, shape (n_vertices, n_vertices, 2, 2)
-        An array that stores the 2-by-2 contingency matrix for each point in the graph samples.
+        An array that stores the 2-by-2 contingency matrix for each point in
+        the graph samples.
     sigsub_: tuple, shape (2, n_edges)
-        A tuple of a row index array and column index array, where n_edges is the size of the signal-subgraph determined by *constraints*.
+        A tuple of a row index array and column index array, where n_edges is
+        the size of the signal-subgraph determined by *constraints*.
     mask_: array-like, shape (n_vertices, n_vertices)
-        An array of boolean values. Entries are true for edges that are in the signal subgraph. 
+        An array of boolean values. Entries are true for edges that are in the
+        signal subgraph.
 
     References
     ----------
-    .. [1] J. T. Vogelstein, W. R. Gray, R. J. Vogelstein, and C. E. Priebe, "Graph Classification using Signal-Subgraphs: Applications in Statistical Connectomics," arXiv:1108.1427v2 [stat.AP], 2012.
-    
+    .. [1] J. T. Vogelstein, W. R. Gray, R. J. Vogelstein, and C. E. Priebe,
+           "Graph Classification using Signal-Subgraphs: Applications in
+           Statistical Connectomics," arXiv:1108.1427v2 [stat.AP], 2012.
     """
 
     def __construct_contingency(self):
@@ -44,21 +50,28 @@ class SignalSubgraph:
         self.contmat_ = out
 
     def fit(self, graphs, labels, constraints):
-        """
-        Fit the signal-subgraph estimator according to the constraints given.
+        """Fit the signal-subgraph estimator according to the constraints
+        given.
 
         Parameters
         ----------
         graphs: array-like, shape (n_vertices, n_vertices, s_samples)
-            A series of labeled (n_vertices, n_vertices) unweighted graph samples. If undirected, the upper or lower triangle matrices should be used.   
+            A series of labeled (n_vertices, n_vertices) unweighted graph
+            samples. If undirected, the upper or lower triangle matrices
+            should be used.
         labels: vector, length (s_samples)
             A vector of class labels. There must be a maximum of two classes.
         constraints: int or vector
-            The constraints that will be imposed onto the estimated signal-subgraph.
-            
-            If *constraints* is an int, *constraints* is the number of edges in the signal-subgraph.
-            If *constraints* is a vector, the first element of *constraints* is the number of edges in the signal-subgraph, and the second element of *constraints* is the number of vertices that the signal-subgraph must be incident to.
-        
+            The constraints that will be imposed onto the estimated signal-
+            subgraph.
+
+            - If *constraints* is an int, *constraints* is the number of edges
+            in the signal-subgraph.
+            - If *constraints* is a vector, the first element of *constraints*
+            is the number of edges in the signal-subgraph, and the second
+            element of *constraints* is the number of vertices that the
+            signal-subgraph must be incident to.
+
         Returns
         -------
         self: returns an instance of self
@@ -76,7 +89,10 @@ class SignalSubgraph:
 
         shape = np.shape(graphs)
         if len(shape) != 3:
-            msg = "Input array 'graphs' must be 3-dimensional with shape (n_vertices, n_vertices, s_samples)."
+            msg = (
+                "Input array 'graphs' must be 3-dimensional with shape"
+                + "(n_vertices, n_vertices, s_samples)."
+            )
             raise ValueError(msg)
         if shape[0] != shape[1]:
             msg = "Input array 'graphs' must have matching number of vertices."
@@ -93,15 +109,18 @@ class SignalSubgraph:
         if len(labels) != shape[2]:
             msg = "Input vector length must match the number of graph samples."
             raise ValueError(msg)
-        else:
-            self.graphs = graphs
-            self.labels = labels
+
+        self.graphs = graphs
+        self.labels = labels
 
         self.__construct_contingency()
         verts = np.shape(self.graphs)[0]
         sigmat = np.array(
             [
-                [fisher_exact(self.contmat_[i, j, :, :])[1] for j in range(verts)]
+                [
+                    fisher_exact(self.contmat_[i, j, :, :])[1]
+                    for j in range(verts)
+                ]
                 for i in range(verts)
             ]
         )
@@ -127,7 +146,9 @@ class SignalSubgraph:
                 blank = sigmat
                 blank = blank > w
 
-                score = 2 * verts - (np.sum(blank, axis=1) + np.sum(blank, axis=0))
+                score = 2 * verts - (
+                    np.sum(blank, axis=1) + np.sum(blank, axis=0)
+                )
                 vscore = np.sort(score)[::-1]
                 vstars = np.argsort(score)[::-1]
 
@@ -140,7 +161,9 @@ class SignalSubgraph:
                     blank[:, vstars] = sigmat[:, vstars]
 
                     indsp = np.dstack(
-                        np.unravel_index(np.argsort(blank.ravel()), np.shape(blank))
+                        np.unravel_index(
+                            np.argsort(blank.ravel()), np.shape(blank)
+                        )
                     )
                     sigsub = indsp[0, :nedges, :]
                     sigsub = tuple(np.transpose(sigsub))
@@ -151,27 +174,38 @@ class SignalSubgraph:
                         sigsub = []
                         wconv = 1
         else:
-            msg = "Input constraints must be an int for the incoherent signal-subgraph estimator, or a vector of length 2 for the coherent subgraph estimator."
+            msg = (
+                "Input constraints must be an int for the incoherent "
+                + "signal-subgraph estimator, or a vector of length 2 for the"
+                + "coherent subgraph estimator."
+            )
             raise TypeError(msg)
         self.sigsub_ = sigsub
         return self
 
     def fit_transform(self, graphs, labels, constraints):
-        """
-        A function to return the indices of the signal-subgraph. If *return_mask* is True, also returns a mask for the signal-subgraph.
+        """A function to return the indices of the signal-subgraph. If
+        *return_mask* is True, also returns a mask for the signal-subgraph.
 
         Parameters
         ----------
         graphs: array-like, shape (n_vertices, n_vertices, s_samples)
-            A series of labeled (n_vertices, n_vertices) unweighted graph samples. If undirected, the upper or lower triangle matrices should be used.     
+            A series of labeled (n_vertices, n_vertices) unweighted graph
+            samples. If undirected, the upper or lower triangle matrices
+            should be used.
         labels: vector, length (s_samples)
             A vector of class labels. There must be a maximum of two classes.
         constraints: int or vector
-            The constraints that will be imposed onto the estimated signal-subgraph.
-            
-            If *constraints* is an int, *constraints* is the number of edges in the signal-subgraph.
-            If *constraints* is a vector, the first element of *constraints* is the number of edges in the signal-subgraph, and the second element of *constraints* is the number of vertices that the signal-subgraph must be incident to.
-        
+            The constraints that will be imposed onto the estimated signal-
+            subgraph.
+
+            - If *constraints* is an int, *constraints* is the number of edges
+            in the signal-subgraph.
+            - If *constraints* is a vector, the first element of *constraints*
+            is the number of edges in the signal-subgraph, and the second
+            element of *constraints* is the number of vertices that the signal
+            -subgraph must be incident to.
+
         Returns
         -------
         sigsub: tuple
