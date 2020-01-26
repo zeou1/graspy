@@ -366,6 +366,7 @@ def gridplot(
     hier_label_fontsize=30,
     title_pad=None,
     sort_nodes=False,
+    legend="full",
 ):
     r"""
     Plots multiple graphs on top of each other with dots as edges.
@@ -496,6 +497,7 @@ def gridplot(
                 "xlim": (0, graph.shape[0] + 1),
                 "ylim": (0, graph.shape[0] + 1),
             },
+            legend=legend,
         )
         plot.ax.axis("off")
         plot.ax.invert_yaxis()
@@ -830,12 +832,13 @@ def edgeplot(
         figsize=figsize, title=title, context=context, font_scale=font_scale
     )
     check_array(X)
-    check_consistent_length((X, labels))
     edges = X.ravel()
-    labels = np.tile(labels, (1, X.shape[1]))
-    labels = labels.ravel()
-    if nonzero:
+    if labels is not None:
+        check_consistent_length((X, labels))
+        labels = np.tile(labels, (1, X.shape[1]))
+        labels = labels.ravel()
         labels = labels[edges != 0]
+    if nonzero:
         edges = edges[edges != 0]
     ax = _distplot(
         edges,
