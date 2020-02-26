@@ -89,13 +89,90 @@ class LatentDistributionTest(BaseInference):
             self.bandwidth = 0.5
         return np.exp(-0.5 * np.sum(diffs ** 2, axis=2) / self.bandwidth ** 2)
 
-    def _statistic(self, X, Y):
-        N, _ = X.shape
-        M, _ = Y.shape
-        x_stat = np.sum(self._gaussian_covariance(X, X) - np.eye(N)) / (N * (N - 1))
-        y_stat = np.sum(self._gaussian_covariance(Y, Y) - np.eye(M)) / (M * (M - 1))
-        xy_stat = np.sum(self._gaussian_covariance(X, Y)) / (N * M)
+    ### My modifications start here - Anton
+    def _fit_plug_in_variance_estimator(self, X):
+        '''
+        Takes in ASE of a graph and returns a function that estimates
+        the variance-covariance matrix at a given point using the
+        plug-in estimator from the RDPG Central Limit Theorem.
+        (Athreya et al., RDPG survey, Equation 10)
+
+        X : adjacency spectral embedding of a graph
+            numpy array in M_{n,d}
+
+        returns:
+        a function that estimates variance (see below)
+        '''
+        n = len(X)
+        delta = 1 / (n) * (X.T @ X)
+        delta_inverse = np.linalg.inv(delta)
+
+        def plug_in_variance_estimator(x):
+            '''
+            Takes in a point of a matrix of points in R^d and returns an
+            estimated covariance matrix for each of the points
+
+            x: points to estimate variance at. numpy (n, d). 
+            if 1-dimensional - reshaped to (1, d)
+
+            returns:
+            (n, d, d) n variance-covariance matrices of the estimated points.
+            '''
+            if x.ndim < 2:
+                x = x.reshape(1, -1)
+            middle_term_scalar = (x @ X.T - (x @ X.T) ** 2)
+            middle_term_matrix = np.einsum('bi,bo->bio', X, X) # can be precomputed
+            middle_term = np.tensordot(middle_term_scalar,
+                                    middle_term_matrix, axes = 1)
+            # preceeding three lines are a vectorized version of this
+            # middle_term = 0
+            # for i in range(n):
+            #     middle_term += np.multiply.outer((x @ X[i] - (x @ X[i]) ** 2),
+            #                                      np.outer(X[i], X[i]))
+            return delta_inverse @ (middle_term / n) @ delta_inverse 
+        
+        return plug_in_variance_estimator
+
+    def _antons_gaussian_covariance(self, X, Y, X_sigmas, Y_sigmas):
+        # print(X.shape, Y.shape, X_sigmas.shape, Y_sigmas.shape)
+        diffs = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
+        mean_contribution = np.sum(diffs ** 2, axis=2)
+        covariance_contribution = np.trace(np.expand_dims(X_sigmas, 1) 
+                                        + np.expand_dims(Y_sigmas, 0), axis1=2, axis2=3)
+        expected_distances = mean_contribution + covariance_contribution
+        # zero out diagonal
+        np.fill_diagonal(expected_distances, 0)
+        if self.bandwidth is None:
+            self.bandwidth = 0.5
+        return np.exp(-0.5 * expected_distances / self.bandwidth ** 2)
+
+    def _statistic(self, X, Y, antons_nonpar=False):
+        N, d_X = X.shape
+        M, d_Y = Y.shape
+        if antons_nonpar: 
+            two_samples = np.concatenate([X, Y], axis=0)
+            get_sigma =  self._fit_plug_in_variance_estimator(two_samples)
+            if N == M:
+                X_sigmas = np.zeros((N, d_X, d_X))
+                Y_sigmas = np.zeros((M, d_Y, d_Y))
+            elif N > M:
+                X_sigmas = get_sigma(X) * (N - M) / (N * M)
+                Y_sigmas = np.zeros((M, d_Y, d_Y))
+            else: 
+                X_sigmas = np.zeros((N, d_X, d_X))
+                Y_sigmas = get_sigma(Y) * (M - N) / (N * M)
+            x_stat = np.sum(self._antons_gaussian_covariance(X, X, X_sigmas, X_sigmas)
+                            - np.eye(N)) / (N * (N - 1))
+            y_stat = np.sum(self._antons_gaussian_covariance(Y, Y, Y_sigmas, Y_sigmas)
+                            - np.eye(M)) / (M * (M - 1))
+            xy_stat = np.sum(self._antons_gaussian_covariance(X, Y, X_sigmas, Y_sigmas)) / (N * M)
+        else:
+            x_stat = np.sum(self._gaussian_covariance(X, X) - np.eye(N)) / (N * (N - 1))
+            y_stat = np.sum(self._gaussian_covariance(Y, Y) - np.eye(M)) / (M * (M - 1))
+            xy_stat = np.sum(self._gaussian_covariance(X, Y)) / (N * M)
         return x_stat - 2 * xy_stat + y_stat
+
+    ### And end here
 
     def _embed(self, A1, A2):
         ase = AdjacencySpectralEmbed(n_components=self.n_components)
@@ -116,7 +193,7 @@ class LatentDistributionTest(BaseInference):
         X1 = np.multiply(t.reshape(-1, 1).T, X1)
         return X1, X2
 
-    def _bootstrap(self, X, Y, M=200):
+    def _bootstrap(self, X, Y, M=200, antons_nonpar=False):
         N, _ = X.shape
         M2, _ = Y.shape
         Z = np.concatenate((X, Y))
@@ -127,10 +204,10 @@ class LatentDistributionTest(BaseInference):
             ]
             bs_X2 = bs_Z[:N, :]
             bs_Y2 = bs_Z[N:, :]
-            statistics[i] = self._statistic(bs_X2, bs_Y2)
+            statistics[i] = self._statistic(bs_X2, bs_Y2, antons_nonpar=antons_nonpar)
         return statistics
 
-    def fit(self, A1, A2):
+    def fit(self, A1, A2, pass_graph=True, antons_nonpar=True, median_heuristic=False):
         """
         Fits the test to the two input graphs
 
@@ -144,20 +221,24 @@ class LatentDistributionTest(BaseInference):
         p_ : float
             The p value corresponding to the specified hypothesis test
         """
-        A1 = import_graph(A1)
-        A2 = import_graph(A2)
-        # if not is_symmetric(A1) or not is_symmetric(A2):
-        #     raise NotImplementedError()  # TODO asymmetric case
-        if self.n_components is None:
-            # get the last elbow from ZG for each and take the maximum
-            num_dims1 = select_dimension(A1)[0][-1]
-            num_dims2 = select_dimension(A2)[0][-1]
-            self.n_components = max(num_dims1, num_dims2)
+        if pass_graph:
+            A1 = import_graph(A1)
+            A2 = import_graph(A2)
+            # if not is_symmetric(A1) or not is_symmetric(A2):
+            #     raise NotImplementedError()  # TODO asymmetric case
+            if self.n_components is None:
+                # get the last elbow from ZG for each and take the maximum
+                num_dims1 = select_dimension(A1)[0][-1]
+                num_dims2 = select_dimension(A2)[0][-1]
+                self.n_components = max(num_dims1, num_dims2)
 
-        X1_hat, X2_hat = self._embed(A1, A2)
-        X1_hat, X2_hat = self._median_heuristic(X1_hat, X2_hat)
-        U = self._statistic(X1_hat, X2_hat)
-        null_distribution = self._bootstrap(X1_hat, X2_hat, self.n_bootstraps)
+            X1_hat, X2_hat = self._embed(A1, A2)
+        else:
+            X1_hat, X2_hat = A1, A2
+        if median_heuristic:
+            X1_hat, X2_hat = self._median_heuristic(X1_hat, X2_hat)
+        U = self._statistic(X1_hat, X2_hat, antons_nonpar)
+        null_distribution = self._bootstrap(X1_hat, X2_hat, self.n_bootstraps, antons_nonpar=antons_nonpar)
         self.null_distribution_ = null_distribution
         self.sample_T_statistic_ = U
         p_value = (len(null_distribution[null_distribution >= U])) / self.n_bootstraps
