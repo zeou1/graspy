@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import numpy as np
+from scipy import stats
 
 from ..embed import AdjacencySpectralEmbed, select_dimension
 from ..utils import import_graph, is_symmetric
@@ -62,7 +63,8 @@ class LatentDistributionTest(BaseInference):
         Bernoulli, 23(3), 1599-1630.
     """
 
-    def __init__(self, n_components=None, n_bootstraps=200, bandwidth=None):
+    def __init__(self, n_components=None, n_bootstraps=200, bandwidth=None,
+                 pass_graph=True, median_heuristic=True, size_correction=None):
         if n_components is not None:
             if not isinstance(n_components, int):
                 msg = "n_components must an int, not {}.".format(type(n_components))
@@ -79,17 +81,38 @@ class LatentDistributionTest(BaseInference):
             msg = "bandwidth must an int, not {}".format(type(bandwidth))
             raise TypeError(msg)
 
+        if size_correction is None:
+            pass
+        elif not isinstance(size_correction, str):
+            msg = "size_correction must a str, not {}".format(type(bandwidth))
+            raise TypeError(msg)
+        else:
+            size_corrections_supported = ['sampling', 'expected']
+            if size_correction not in size_corrections_supported:
+                msg = "supported size corrections are {}".fomat(size_corrections)
+                raise NotImplementedError(msg)
+
         super().__init__(embedding="ase", n_components=n_components)
+
         self.n_bootstraps = n_bootstraps
         self.bandwidth = bandwidth
-
-    def _gaussian_covariance(self, X, Y):
-        diffs = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
+        # moved this to here out of the methods
+        # TODO implemented autoselected bandwidth
         if self.bandwidth is None:
             self.bandwidth = 0.5
-        return np.exp(-0.5 * np.sum(diffs ** 2, axis=2) / self.bandwidth ** 2)
+        self.pass_graph = pass_graph
+        self.median_heuristic = True
 
-    ### My modifications start here - Anton
+        if size_correction == 'sampling':
+            self.sampling = True
+            self.expected = False
+        elif size_correction == 'expected':
+            self.sampling = False
+            self.expected = True
+        else:
+            self.sampling = False
+            self.expected = False
+
     def _fit_plug_in_variance_estimator(self, X):
         '''
         Takes in ASE of a graph and returns a function that estimates
@@ -133,23 +156,55 @@ class LatentDistributionTest(BaseInference):
         
         return plug_in_variance_estimator
 
-    def _antons_gaussian_covariance(self, X, Y, X_sigmas, Y_sigmas):
-        # print(X.shape, Y.shape, X_sigmas.shape, Y_sigmas.shape)
-        diffs = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
-        mean_contribution = np.sum(diffs ** 2, axis=2)
-        covariance_contribution = np.trace(np.expand_dims(X_sigmas, 1) 
-                                        + np.expand_dims(Y_sigmas, 0), axis1=2, axis2=3)
-        expected_distances = mean_contribution + covariance_contribution
-        # zero out diagonal
-        np.fill_diagonal(expected_distances, 0)
-        if self.bandwidth is None:
-            self.bandwidth = 0.5
-        return np.exp(-0.5 * expected_distances / self.bandwidth ** 2)
+    def _sample_modified_ase(self, X, Y):
+        n = len(X)
+        m = len(Y)
+        two_samples = np.concatenate([X, Y], axis=0)
+        get_sigma = self._fit_plug_in_variance_estimator(two_samples)
+        if n == m:
+            return X, Y
+        elif n > m:
+            sigma_X = get_sigma(X) * (n - m) / (n * m)
+            X_sampled = np.zeros(X.shape)
+            for i in range(n):
+                X_sampled[i,:] = X[i, :] + stats.multivariate_normal.rvs(cov=sigma_X[i])
+            return X_sampled, Y
+        else: 
+            sigma_Y = get_sigma(Y) * (m - n) / (n * m)
+            Y_sampled = np.zeros(Y.shape)
+            for i in range(m):
+                Y_sampled[i,:] = Y[i, :] + stats.multivariate_normal.rvs(cov=sigma_Y[i])
+            return X, Y_sampled
 
-    def _statistic(self, X, Y, antons_nonpar=False):
+    def _rbfk_matrix(self, X, Y):
+        diffs = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
+        kernel_matrix = np.exp(-0.5 * np.sum(diffs ** 2, axis=2)
+                                / self.bandwidth ** 2)
+        return kernel_matrix
+
+    def _expected_rbfk_matrix(self, X, Y, X_sigmas, Y_sigmas):
+        # use the appropriately broadcasted formula:
+        # if    Z ~ N(mu, Sigma), c constant
+        # then  E[exp(c Z^T Z)]   =   exp(- c mu^T (I + 2 c Sigma)^{-1} mu)
+        #                              / det (I + 2c Sigma)^{1/2}
+        n, d = X.shape
+        m, _ = Y.shape
+
+        c = self.bandwidth
+        mu = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
+        sigma = np.expand_dims(X_sigmas, 1) + np.expand_dims(Y_sigmas, 0)
+
+        inverted_matrix = np.linalg.inv(np.eye(d) + 2 * c * sigma)
+        numer = np.exp(- c * np.expand_dims(mu, -2)
+                       @ inverted_matrix @ np.expand_dims(mu, -1))
+        denom = np.linalg.det(np.eye(d) + 2 * c * sigma) ** (1 / 2)
+        kernel_matrix = numer.reshape(n, m) / denom
+        return kernel_matrix
+
+    def _statistic(self, X, Y):
         N, d_X = X.shape
         M, d_Y = Y.shape
-        if antons_nonpar: 
+        if self.expected:
             two_samples = np.concatenate([X, Y], axis=0)
             get_sigma =  self._fit_plug_in_variance_estimator(two_samples)
             if N == M:
@@ -161,16 +216,19 @@ class LatentDistributionTest(BaseInference):
             else: 
                 X_sigmas = np.zeros((N, d_X, d_X))
                 Y_sigmas = get_sigma(Y) * (M - N) / (N * M)
-            x_stat = np.sum(self._antons_gaussian_covariance(X, X, X_sigmas, X_sigmas)
-                            - np.eye(N)) / (N * (N - 1))
-            y_stat = np.sum(self._antons_gaussian_covariance(Y, Y, Y_sigmas, Y_sigmas)
-                            - np.eye(M)) / (M * (M - 1))
-            xy_stat = np.sum(self._antons_gaussian_covariance(X, Y, X_sigmas, Y_sigmas)) / (N * M)
+            X_rbfk = self._expected_rbfk_matrix(X, X, X_sigmas, X_sigmas)
+            np.fill_diagonal(X_rbfk, 1)
+            Y_rbfk = self._expected_rbfk_matrix(Y, Y, Y_sigmas, Y_sigmas)
+            np.fill_diagonal(Y_rbfk, 1)
+            XY_rbfk = self._expected_rbfk_matrix(X, Y, X_sigmas, Y_sigmas)
         else:
-            x_stat = np.sum(self._gaussian_covariance(X, X) - np.eye(N)) / (N * (N - 1))
-            y_stat = np.sum(self._gaussian_covariance(Y, Y) - np.eye(M)) / (M * (M - 1))
-            xy_stat = np.sum(self._gaussian_covariance(X, Y)) / (N * M)
-        return x_stat - 2 * xy_stat + y_stat
+            X_rbfk = self._rbfk_matrix(X, X)
+            Y_rbfk = self._rbfk_matrix(Y, Y)
+            XY_rbfk = self._rbfk_matrix(X, Y)
+        X_stat = np.sum(X_rbfk - np.eye(N)) / (N * (N - 1))
+        Y_stat = np.sum(Y_rbfk - np.eye(M)) / (M * (M - 1))
+        XY_stat = np.sum(XY_rbfk) / (N * M)
+        return X_stat - 2 * XY_stat + Y_stat
 
     ### And end here
 
@@ -193,7 +251,7 @@ class LatentDistributionTest(BaseInference):
         X1 = np.multiply(t.reshape(-1, 1).T, X1)
         return X1, X2
 
-    def _bootstrap(self, X, Y, M=200, antons_nonpar=False):
+    def _bootstrap(self, X, Y, M=200):
         N, _ = X.shape
         M2, _ = Y.shape
         Z = np.concatenate((X, Y))
@@ -204,10 +262,10 @@ class LatentDistributionTest(BaseInference):
             ]
             bs_X2 = bs_Z[:N, :]
             bs_Y2 = bs_Z[N:, :]
-            statistics[i] = self._statistic(bs_X2, bs_Y2, antons_nonpar=antons_nonpar)
+            statistics[i] = self._statistic(bs_X2, bs_Y2)
         return statistics
 
-    def fit(self, A1, A2, pass_graph=True, antons_nonpar=True, median_heuristic=False):
+    def fit(self, A1, A2):
         """
         Fits the test to the two input graphs
 
@@ -215,13 +273,14 @@ class LatentDistributionTest(BaseInference):
         ----------
         A1, A2 : nx.Graph, nx.DiGraph, nx.MultiDiGraph, nx.MultiGraph, np.ndarray
             The two graphs to run a hypothesis test on.
+            Or two embeddings if pass_graph was set to false
 
         Returns
         -------
         p_ : float
             The p value corresponding to the specified hypothesis test
         """
-        if pass_graph:
+        if self.pass_graph:
             A1 = import_graph(A1)
             A2 = import_graph(A2)
             # if not is_symmetric(A1) or not is_symmetric(A2):
@@ -235,10 +294,14 @@ class LatentDistributionTest(BaseInference):
             X1_hat, X2_hat = self._embed(A1, A2)
         else:
             X1_hat, X2_hat = A1, A2
-        if median_heuristic:
+        if self.sampling:
+            X1_hat, X2_hat = self._sample_modified_ase(X1_hat, X2_hat)
+        # Perform sign flips
+        if self.median_heuristic:
             X1_hat, X2_hat = self._median_heuristic(X1_hat, X2_hat)
-        U = self._statistic(X1_hat, X2_hat, antons_nonpar)
-        null_distribution = self._bootstrap(X1_hat, X2_hat, self.n_bootstraps, antons_nonpar=antons_nonpar)
+        # TODO reminder: make this into a nicer form
+        U = self._statistic(X1_hat, X2_hat)
+        null_distribution = self._bootstrap(X1_hat, X2_hat, self.n_bootstraps)
         self.null_distribution_ = null_distribution
         self.sample_T_statistic_ = U
         p_value = (len(null_distribution[null_distribution >= U])) / self.n_bootstraps
