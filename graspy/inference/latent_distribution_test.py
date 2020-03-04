@@ -64,7 +64,7 @@ class LatentDistributionTest(BaseInference):
     """
 
     def __init__(self, n_components=None, n_bootstraps=200, bandwidth=None,
-                 pass_graph=True, median_heuristic=True, size_correction=None):
+                 pass_graph=True, sign_flips=True, size_correction=None):
         if n_components is not None:
             if not isinstance(n_components, int):
                 msg = "n_components must an int, not {}.".format(type(n_components))
@@ -101,7 +101,7 @@ class LatentDistributionTest(BaseInference):
         if self.bandwidth is None:
             self.bandwidth = 0.5
         self.pass_graph = pass_graph
-        self.median_heuristic = True
+        self.sign_flips = sign_flips
 
         if size_correction == 'sampling':
             self.sampling = True
@@ -176,13 +176,7 @@ class LatentDistributionTest(BaseInference):
                 Y_sampled[i,:] = Y[i, :] + stats.multivariate_normal.rvs(cov=sigma_Y[i])
             return X, Y_sampled
 
-    def _rbfk_matrix(self, X, Y):
-        diffs = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
-        kernel_matrix = np.exp(-0.5 * np.sum(diffs ** 2, axis=2)
-                                / self.bandwidth ** 2)
-        return kernel_matrix
-
-    def _expected_rbfk_matrix(self, X, Y, X_sigmas, Y_sigmas):
+    def _rbfk_matrix(self, X, Y, X_sigmas, Y_sigmas):
         # use the appropriately broadcasted formula:
         # if    Z ~ N(mu, Sigma), c constant
         # then  E[exp(c Z^T Z)]   =   exp(- c mu^T (I + 2 c Sigma)^{-1} mu)
@@ -201,36 +195,21 @@ class LatentDistributionTest(BaseInference):
         kernel_matrix = numer.reshape(n, m) / denom
         return kernel_matrix
 
-    def _statistic(self, X, Y):
-        N, d_X = X.shape
-        M, d_Y = Y.shape
-        if self.expected:
-            two_samples = np.concatenate([X, Y], axis=0)
-            get_sigma =  self._fit_plug_in_variance_estimator(two_samples)
-            if N == M:
-                X_sigmas = np.zeros((N, d_X, d_X))
-                Y_sigmas = np.zeros((M, d_Y, d_Y))
-            elif N > M:
-                X_sigmas = get_sigma(X) * (N - M) / (N * M)
-                Y_sigmas = np.zeros((M, d_Y, d_Y))
-            else: 
-                X_sigmas = np.zeros((N, d_X, d_X))
-                Y_sigmas = get_sigma(Y) * (M - N) / (N * M)
-            X_rbfk = self._expected_rbfk_matrix(X, X, X_sigmas, X_sigmas)
-            np.fill_diagonal(X_rbfk, 1)
-            Y_rbfk = self._expected_rbfk_matrix(Y, Y, Y_sigmas, Y_sigmas)
-            np.fill_diagonal(Y_rbfk, 1)
-            XY_rbfk = self._expected_rbfk_matrix(X, Y, X_sigmas, Y_sigmas)
-        else:
-            X_rbfk = self._rbfk_matrix(X, X)
-            Y_rbfk = self._rbfk_matrix(Y, Y)
-            XY_rbfk = self._rbfk_matrix(X, Y)
+    def _statistic(self, X, Y, X_sigmas, Y_sigmas):
+        N, _ = X.shape # should really make them global ...
+        M, _ = Y.shape
+        # compute the kernel matrices within and between the samples
+        X_rbfk = self._rbfk_matrix(X, X, X_sigmas, X_sigmas)
+        np.fill_diagonal(X_rbfk, 1)
+        Y_rbfk = self._rbfk_matrix(Y, Y, Y_sigmas, Y_sigmas)
+        np.fill_diagonal(Y_rbfk, 1)
+        XY_rbfk = self._rbfk_matrix(X, Y, X_sigmas, Y_sigmas)
+        # compute the test statistic
         X_stat = np.sum(X_rbfk - np.eye(N)) / (N * (N - 1))
         Y_stat = np.sum(Y_rbfk - np.eye(M)) / (M * (M - 1))
         XY_stat = np.sum(XY_rbfk) / (N * M)
-        return X_stat - 2 * XY_stat + Y_stat
-
-    ### And end here
+        total_stat = X_stat - 2 * XY_stat + Y_stat
+        return total_stat
 
     def _embed(self, A1, A2):
         ase = AdjacencySpectralEmbed(n_components=self.n_components)
@@ -243,8 +222,7 @@ class LatentDistributionTest(BaseInference):
             raise ValueError("Input graphs do not have same directedness")
         return X1_hat, X2_hat
 
-    def _median_heuristic(self, X1, X2):
-        # TODO this should not be called median heurisitic in nonpar context
+    def _sign_flips(self, X1, X2):
         X1_medians = np.median(X1, axis=0)
         X2_medians = np.median(X2, axis=0)
         val = np.multiply(X1_medians, X2_medians)
@@ -252,27 +230,30 @@ class LatentDistributionTest(BaseInference):
         X1 = np.multiply(t.reshape(-1, 1).T, X1)
         return X1, X2
 
-    def _bootstrap(self, X, Y, M=200):
+    def _bootstrap(self, X, Y, X_sigmas, Y_sigmas, M=200):
         N, _ = X.shape
         M2, _ = Y.shape
         Z = np.concatenate((X, Y))
+        Z_sigmas = np.concatenate((X_sigmas, Y_sigmas))
         statistics = np.zeros(M)
         for i in range(M):
-            bs_Z = Z[
-                np.random.choice(np.arange(0, N + M2), size=int(N + M2), replace=False)
-            ]
+            permutation = np.random.choice(np.arange(0, N + M2), size=int(N + M2), replace=False)
+            bs_Z = Z[permutation]
             bs_X2 = bs_Z[:N, :]
             bs_Y2 = bs_Z[N:, :]
-            statistics[i] = self._statistic(bs_X2, bs_Y2)
+            bs_Z_sigmas = Z_sigmas[permutation]
+            bs_X2_sigmas = bs_Z_sigmas[:N, :]
+            bs_Y2_sigmas = bs_Z_sigmas[N:, :]
+            statistics[i] = self._statistic(bs_X2, bs_Y2, bs_X2_sigmas, bs_Y2_sigmas)
         return statistics
 
-    def fit(self, A1, A2):
+    def fit(self, A, B):
         """
         Fits the test to the two input graphs
 
         Parameters
         ----------
-        A1, A2 : nx.Graph, nx.DiGraph, nx.MultiDiGraph, nx.MultiGraph, np.ndarray
+        A, B : nx.Graph, nx.DiGraph, nx.MultiDiGraph, nx.MultiGraph, np.ndarray
             The two graphs to run a hypothesis test on.
             or two embeddings if pass_graph was set to false
 
@@ -282,29 +263,55 @@ class LatentDistributionTest(BaseInference):
             The p value corresponding to the specified hypothesis test
         """
         if self.pass_graph:
-            A1 = import_graph(A1)
-            A2 = import_graph(A2)
-            # if not is_symmetric(A1) or not is_symmetric(A2):
+            A = import_graph(A)
+            B = import_graph(B)
+            # if not is_symmetric(A) or not is_symmetric(B):
             #     raise NotImplementedError()  # TODO asymmetric case
             if self.n_components is None:
                 # get the last elbow from ZG for each and take the maximum
-                num_dims1 = select_dimension(A1)[0][-1]
-                num_dims2 = select_dimension(A2)[0][-1]
+                num_dims1 = select_dimension(A)[0][-1]
+                num_dims2 = select_dimension(B)[0][-1]
                 self.n_components = max(num_dims1, num_dims2)
 
-            X1_hat, X2_hat = self._embed(A1, A2)
+            X_hat, Y_hat = self._embed(A, B)
         else:
-            X1_hat, X2_hat = A1, A2
+            X_hat, Y_hat = A1, A2
+
+        # obtain modified ase
         if self.sampling:
-            X1_hat, X2_hat = self._sample_modified_ase(X1_hat, X2_hat)
-        # Perform sign flips
-        if self.median_heuristic:
-            X1_hat, X2_hat = self._median_heuristic(X1_hat, X2_hat)
+            X_hat, Y_hat = self._sample_modified_ase(X_hat, Y_hat)
+
+        # perform sign flips
+        if self.sign_flips:
+            X_hat, Y_hat = self._sign_flips(X_hat, Y_hat)
+
+        # estimate the variances using the plug-in estimator from the clt
         # it is much faster to precompute the variances
+        N, d_X = X_hat.shape # dont really need to do this (n_components)
+        M, d_Y = Y_hat.shape
         if self.expected:
-            pass
-        U = self._statistic(X1_hat, X2_hat)
-        null_distribution = self._bootstrap(X1_hat, X2_hat, self.n_bootstraps)
+            two_samples = np.concatenate([X_hat, Y_hat], axis=0)
+            get_sigma =  self._fit_plug_in_variance_estimator(two_samples)
+            if N == M:
+                X_sigmas = np.zeros((N, d_X, d_X))
+                Y_sigmas = np.zeros((M, d_Y, d_Y))
+            elif N > M:
+                X_sigmas = get_sigma(X_hat) * (N - M) / (N * M)
+                Y_sigmas = np.zeros((M, d_Y, d_Y))
+            else: 
+                X_sigmas = np.zeros((N, d_X, d_X))
+                Y_sigmas = get_sigma(Y_hat) * (M - N) / (N * M)
+        else:
+            X_sigmas = np.zeros((N, d_X, d_X))
+            Y_sigmas = np.zeros((M, d_Y, d_Y))
+
+        # compute the test statistic and the null distribution
+        U = self._statistic(X_hat, Y_hat, X_sigmas, Y_sigmas)
+        null_distribution = self._bootstrap(X_hat, Y_hat,
+                                            X_sigmas, Y_sigmas,
+                                            self.n_bootstraps)
+
+        # compute the value
         # TODO reminder: make this into a nicer form
         self.null_distribution_ = null_distribution
         self.sample_T_statistic_ = U
