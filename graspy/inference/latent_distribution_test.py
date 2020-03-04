@@ -244,6 +244,7 @@ class LatentDistributionTest(BaseInference):
         return X1_hat, X2_hat
 
     def _median_heuristic(self, X1, X2):
+        # TODO this should not be called median heurisitic in nonpar context
         X1_medians = np.median(X1, axis=0)
         X2_medians = np.median(X2, axis=0)
         val = np.multiply(X1_medians, X2_medians)
@@ -273,7 +274,7 @@ class LatentDistributionTest(BaseInference):
         ----------
         A1, A2 : nx.Graph, nx.DiGraph, nx.MultiDiGraph, nx.MultiGraph, np.ndarray
             The two graphs to run a hypothesis test on.
-            Or two embeddings if pass_graph was set to false
+            or two embeddings if pass_graph was set to false
 
         Returns
         -------
@@ -299,9 +300,12 @@ class LatentDistributionTest(BaseInference):
         # Perform sign flips
         if self.median_heuristic:
             X1_hat, X2_hat = self._median_heuristic(X1_hat, X2_hat)
-        # TODO reminder: make this into a nicer form
+        # it is much faster to precompute the variances
+        if self.expected:
+            pass
         U = self._statistic(X1_hat, X2_hat)
         null_distribution = self._bootstrap(X1_hat, X2_hat, self.n_bootstraps)
+        # TODO reminder: make this into a nicer form
         self.null_distribution_ = null_distribution
         self.sample_T_statistic_ = U
         p_value = (len(null_distribution[null_distribution >= U])) / self.n_bootstraps
