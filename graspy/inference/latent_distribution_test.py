@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import numpy as np
+import scipy as sp
 from scipy import stats
 
 from ..embed import AdjacencySpectralEmbed, select_dimension
@@ -176,11 +177,27 @@ class LatentDistributionTest(BaseInference):
                 Y_sampled[i,:] = Y[i, :] + stats.multivariate_normal.rvs(cov=sigma_Y[i])
             return X, Y_sampled
 
+#     def _rbfk_matrix(self, X, Y, X_sigmas, Y_sigmas):
+#         # use the appropriately broadcasted formula:
+#         # if    Z ~ N(mu, Sigma), c constant
+#         # then  E[exp(c Z^T Z)]   =   exp(- c mu^T (I + 2 c Sigma)^{-1} mu)
+#         #                              / det (I + 2c Sigma)^{1/2}
+#         n, d = X.shape
+#         m, _ = Y.shape
+# 
+#         c = self.bandwidth
+#         mu = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
+#         sigma = np.expand_dims(X_sigmas, 1) + np.expand_dims(Y_sigmas, 0)
+# 
+#         inverted_matrix = np.linalg.inv(np.eye(d) + 2 * c * sigma)
+#         numer = np.exp(- c * np.expand_dims(mu, -2)
+#                        @ inverted_matrix @ np.expand_dims(mu, -1))
+#         denom = np.linalg.det(np.eye(d) + 2 * c * sigma) ** (1 / 2)
+#         kernel_matrix = numer.reshape(n, m) / denom
+#         return kernel_matrix
+
     def _rbfk_matrix(self, X, Y, X_sigmas, Y_sigmas):
-        # use the appropriately broadcasted formula:
-        # if    Z ~ N(mu, Sigma), c constant
-        # then  E[exp(c Z^T Z)]   =   exp(- c mu^T (I + 2 c Sigma)^{-1} mu)
-        #                              / det (I + 2c Sigma)^{1/2}
+        # use the appropriately broadcasted formula
         n, d = X.shape
         m, _ = Y.shape
 
@@ -188,10 +205,20 @@ class LatentDistributionTest(BaseInference):
         mu = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
         sigma = np.expand_dims(X_sigmas, 1) + np.expand_dims(Y_sigmas, 0)
 
-        inverted_matrix = np.linalg.inv(np.eye(d) + 2 * c * sigma)
-        numer = np.exp(- c * np.expand_dims(mu, -2)
-                       @ inverted_matrix @ np.expand_dims(mu, -1))
-        denom = np.linalg.det(np.eye(d) + 2 * c * sigma) ** (1 / 2)
+        gamma_inverse = np.eye(d) + 2 * c * sigma
+        gamma = np.linalg.inv(gamma_inverse)
+        if d == 1:
+            sigma_sqrt = sigma ** (1/2)
+        else:
+            sigma_sqrt = np.array([[sp.linalg.sqrtm(i) for i in j] for j in sigma])
+        nu = (- 2 * c * gamma @ sigma_sqrt @ np.expand_dims(mu, -1)).reshape(n, m, d)
+
+        exp_1 = - c * np.expand_dims(mu, -2) @ np.expand_dims(mu, -1)
+        exp_2 = np.expand_dims(nu, -2) @ gamma @ np.expand_dims(nu, -1) / 2
+
+        numer = np.exp(exp_1 + exp_2)
+        denom = np.linalg.det(gamma_inverse) ** (1 / 2)
+
         kernel_matrix = numer.reshape(n, m) / denom
         return kernel_matrix
 
