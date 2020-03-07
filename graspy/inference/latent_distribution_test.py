@@ -98,7 +98,7 @@ class LatentDistributionTest(BaseInference):
         self.n_bootstraps = n_bootstraps
         self.bandwidth = bandwidth
         # moved this to here out of the methods
-        # TODO implemented autoselected bandwidth
+        # TODO implemented adaptively selected bandwidth
         if self.bandwidth is None:
             self.bandwidth = 0.5
         self.pass_graph = pass_graph
@@ -177,31 +177,22 @@ class LatentDistributionTest(BaseInference):
                 Y_sampled[i,:] = Y[i, :] + stats.multivariate_normal.rvs(cov=sigma_Y[i])
             return X, Y_sampled
 
-#     def _rbfk_matrix(self, X, Y, X_sigmas, Y_sigmas):
-#         # use the appropriately broadcasted formula:
-#         # if    Z ~ N(mu, Sigma), c constant
-#         # then  E[exp(c Z^T Z)]   =   exp(- c mu^T (I + 2 c Sigma)^{-1} mu)
-#         #                              / det (I + 2c Sigma)^{1/2}
-#         n, d = X.shape
-#         m, _ = Y.shape
-# 
-#         c = self.bandwidth
-#         mu = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
-#         sigma = np.expand_dims(X_sigmas, 1) + np.expand_dims(Y_sigmas, 0)
-# 
-#         inverted_matrix = np.linalg.inv(np.eye(d) + 2 * c * sigma)
-#         numer = np.exp(- c * np.expand_dims(mu, -2)
-#                        @ inverted_matrix @ np.expand_dims(mu, -1))
-#         denom = np.linalg.det(np.eye(d) + 2 * c * sigma) ** (1 / 2)
-#         kernel_matrix = numer.reshape(n, m) / denom
-#         return kernel_matrix
+    def _rbfk_matrix_regular(self, X, Y, X_sigmas=None, Y_sigmas=None):
+        # a regular rbfk kernel
+        # happens to be a specific case of the expected rbfk matrix
+        # when the sigmas are zero matrices, they should overlap
+        # this is faster and also less prone to potential bugs
+        diffs = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
+        kernel_matrix = np.exp(-0.5 * np.sum(diffs ** 2, axis=2) / self.bandwidth ** 2)
+        return kernel_matrix
 
-    def _rbfk_matrix(self, X, Y, X_sigmas, Y_sigmas):
+    def _rbfk_matrix_expected_unsimplified(self, X, Y, X_sigmas, Y_sigmas):
         # use the appropriately broadcasted formula
+        # should be identical to the version right below, always.
         n, d = X.shape
         m, _ = Y.shape
 
-        c = self.bandwidth
+        c = 1 / (2 * self.bandwidth ** 2)
         mu = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
         sigma = np.expand_dims(X_sigmas, 1) + np.expand_dims(Y_sigmas, 0)
 
@@ -214,13 +205,35 @@ class LatentDistributionTest(BaseInference):
         nu = (- 2 * c * gamma @ sigma_sqrt @ np.expand_dims(mu, -1)).reshape(n, m, d)
 
         exp_1 = - c * np.expand_dims(mu, -2) @ np.expand_dims(mu, -1)
-        exp_2 = np.expand_dims(nu, -2) @ gamma @ np.expand_dims(nu, -1) / 2
+        exp_2 = np.expand_dims(nu, -2) @ gamma_inverse @ np.expand_dims(nu, -1) / 2
 
         numer = np.exp(exp_1 + exp_2)
         denom = np.linalg.det(gamma_inverse) ** (1 / 2)
 
         kernel_matrix = numer.reshape(n, m) / denom
+
         return kernel_matrix
+
+    def _rbfk_matrix_expected(self, X, Y, X_sigmas, Y_sigmas):
+        # use the appropriately broadcasted formula:
+        # if    Z ~ N(mu, Sigma), c constant
+        # then  E[exp(-c Z^T Z)]  =  exp(- c mu^T (I + 2 c Sigma)^{-1} mu)
+        #                              / det (I + 2c Sigma)^{1/2}
+        n, d = X.shape
+        m, _ = Y.shape
+
+        c = 1 / (2 * self.bandwidth ** 2)
+        mu = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
+        sigma = np.expand_dims(X_sigmas, 1) + np.expand_dims(Y_sigmas, 0)
+
+        inverted_matrix = np.linalg.inv(np.eye(d) + 2 * c * sigma)
+        numer = np.exp(- c * np.expand_dims(mu, -2)
+                       @ inverted_matrix @ np.expand_dims(mu, -1))
+        denom = np.linalg.det(np.eye(d) + 2 * c * sigma) ** (1 / 2)
+        kernel_matrix = numer.reshape(n, m) / denom
+
+        return kernel_matrix
+
 
     def _statistic(self, X, Y, X_sigmas, Y_sigmas):
         N, _ = X.shape # should really make them global ...
@@ -328,9 +341,13 @@ class LatentDistributionTest(BaseInference):
             else: 
                 X_sigmas = np.zeros((N, d_X, d_X))
                 Y_sigmas = get_sigma(Y_hat) * (M - N) / (N * M)
+
+            self._rbfk_matrix = self._rbfk_matrix_expected
         else:
             X_sigmas = np.zeros((N, d_X, d_X))
             Y_sigmas = np.zeros((M, d_Y, d_Y))
+
+            self._rbfk_matrix = self._rbfk_matrix_regular
 
         # compute the test statistic and the null distribution
         U = self._statistic(X_hat, Y_hat, X_sigmas, Y_sigmas)
