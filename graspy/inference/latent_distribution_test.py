@@ -157,24 +157,60 @@ class LatentDistributionTest(BaseInference):
         
         return plug_in_variance_estimator
 
+    def _estimate_correction_variances(self, X_hat, Y_hat, pooled=True):
+        N, d_X = X_hat.shape # dont really need to do this (n_components)
+        M, d_Y = Y_hat.shape
+        if N == M:
+            X_sigmas = np.zeros((N, d_X, d_X))
+            Y_sigmas = np.zeros((M, d_Y, d_Y))
+        elif N > M:
+            if pooled:
+                two_samples = np.concatenate([X_hat, Y_hat], axis=0)
+                get_sigma = self._fit_plug_in_variance_estimator(two_samples)
+            else:
+                get_sigma = self._fit_plug_in_variance_estimator(X_hat)
+            X_sigmas = get_sigma(X_hat) * (N - M) / (N * M)
+            Y_sigmas = np.zeros((M, d_Y, d_Y))
+        else: 
+            if pooled:
+                two_samples = np.concatenate([X_hat, Y_hat], axis=0)
+                get_sigma = self._fit_plug_in_variance_estimator(two_samples)
+            else:
+                get_sigma = self._fit_plug_in_variance_estimator(X_hat)
+            X_sigmas = np.zeros((N, d_X, d_X))
+            Y_sigmas = get_sigma(Y_hat) * (M - N) / (N * M)
+        return X_sigmas, Y_sigmas
+
+    def _estimate_correction_variances(self, X_hat, Y_hat, pooled=True):
+        N, d_X = X_hat.shape # dont really need to do this (n_components)
+        M, d_Y = Y_hat.shape
+        if N == M:
+            X_sigmas = np.zeros((N, d_X, d_X))
+            Y_sigmas = np.zeros((M, d_Y, d_Y))
+        elif N > M:
+            X_sigmas = np.ones((N, d_Y, d_Y)) * (N - M) / (N * M)
+            Y_sigmas = np.zeros((M, d_Y, d_Y))
+        else: 
+            X_sigmas = np.zeros((N, d_X, d_X))
+            Y_sigmas = np.ones((M, d_Y, d_Y)) * (M - N) / (N * M)
+        return X_sigmas, Y_sigmas
+
     def _sample_modified_ase(self, X, Y):
         n = len(X)
         m = len(Y)
-        two_samples = np.concatenate([X, Y], axis=0)
-        get_sigma = self._fit_plug_in_variance_estimator(two_samples)
         if n == m:
             return X, Y
         elif n > m:
-            sigma_X = get_sigma(X) * (n - m) / (n * m)
+            X_sigmas, _ = self._estimate_correction_variances(X, Y)
             X_sampled = np.zeros(X.shape)
             for i in range(n):
-                X_sampled[i,:] = X[i, :] + stats.multivariate_normal.rvs(cov=sigma_X[i])
+                X_sampled[i,:] = X[i, :] + stats.multivariate_normal.rvs(cov=X_sigmas[i])
             return X_sampled, Y
         else: 
-            sigma_Y = get_sigma(Y) * (m - n) / (n * m)
+            _, Y_sigmas = self._estimate_correction_variances(X, Y)
             Y_sampled = np.zeros(Y.shape)
             for i in range(m):
-                Y_sampled[i,:] = Y[i, :] + stats.multivariate_normal.rvs(cov=sigma_Y[i])
+                Y_sampled[i,:] = Y[i, :] + stats.multivariate_normal.rvs(cov=Y_sigmas[i])
             return X, Y_sampled
 
     def _rbfk_matrix_regular(self, X, Y, X_sigmas=None, Y_sigmas=None):
@@ -184,34 +220,6 @@ class LatentDistributionTest(BaseInference):
         # this is faster and also less prone to potential bugs
         diffs = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
         kernel_matrix = np.exp(-0.5 * np.sum(diffs ** 2, axis=2) / self.bandwidth ** 2)
-        return kernel_matrix
-
-    def _rbfk_matrix_expected_unsimplified(self, X, Y, X_sigmas, Y_sigmas):
-        # use the appropriately broadcasted formula
-        # should be identical to the version right below, always.
-        n, d = X.shape
-        m, _ = Y.shape
-
-        c = 1 / (2 * self.bandwidth ** 2)
-        mu = np.expand_dims(X, 1) - np.expand_dims(Y, 0)
-        sigma = np.expand_dims(X_sigmas, 1) + np.expand_dims(Y_sigmas, 0)
-
-        gamma_inverse = np.eye(d) + 2 * c * sigma
-        gamma = np.linalg.inv(gamma_inverse)
-        if d == 1:
-            sigma_sqrt = sigma ** (1/2)
-        else:
-            sigma_sqrt = np.array([[sp.linalg.sqrtm(i) for i in j] for j in sigma])
-        nu = (- 2 * c * gamma @ sigma_sqrt @ np.expand_dims(mu, -1)).reshape(n, m, d)
-
-        exp_1 = - c * np.expand_dims(mu, -2) @ np.expand_dims(mu, -1)
-        exp_2 = np.expand_dims(nu, -2) @ gamma_inverse @ np.expand_dims(nu, -1) / 2
-
-        numer = np.exp(exp_1 + exp_2)
-        denom = np.linalg.det(gamma_inverse) ** (1 / 2)
-
-        kernel_matrix = numer.reshape(n, m) / denom
-
         return kernel_matrix
 
     def _rbfk_matrix_expected(self, X, Y, X_sigmas, Y_sigmas):
@@ -234,16 +242,23 @@ class LatentDistributionTest(BaseInference):
 
         return kernel_matrix
 
-
-    def _statistic(self, X, Y, X_sigmas, Y_sigmas):
-        N, _ = X.shape # should really make them global ...
-        M, _ = Y.shape
-        # compute the kernel matrices within and between the samples
+    def _kernel_matrix(self, X, Y, X_sigmas, Y_sigmas):
+        # compute the within and between the samplesa kernel matrices
         X_rbfk = self._rbfk_matrix(X, X, X_sigmas, X_sigmas)
         np.fill_diagonal(X_rbfk, 1)
         Y_rbfk = self._rbfk_matrix(Y, Y, Y_sigmas, Y_sigmas)
         np.fill_diagonal(Y_rbfk, 1)
         XY_rbfk = self._rbfk_matrix(X, Y, X_sigmas, Y_sigmas)
+        # assemble one large kernel matrix 
+        full_kernel_matrix = np.block([[X_rbfk, XY_rbfk],
+                                        [XY_rbfk.T, Y_rbfk]]) 
+        return full_kernel_matrix
+
+    def _statistic(self, kernel_matrix, N, M):
+        # extract within and between samples matrices kernel matrices
+        X_rbfk = kernel_matrix[:N, :N]
+        Y_rbfk = kernel_matrix[N:, N:]
+        XY_rbfk = kernel_matrix[N:, :N]
         # compute the test statistic
         X_stat = np.sum(X_rbfk - np.eye(N)) / (N * (N - 1))
         Y_stat = np.sum(Y_rbfk - np.eye(M)) / (M * (M - 1))
@@ -270,21 +285,13 @@ class LatentDistributionTest(BaseInference):
         X1 = np.multiply(t.reshape(-1, 1).T, X1)
         return X1, X2
 
-    def _bootstrap(self, X, Y, X_sigmas, Y_sigmas, M=200):
-        N, _ = X.shape
-        M2, _ = Y.shape
-        Z = np.concatenate((X, Y))
-        Z_sigmas = np.concatenate((X_sigmas, Y_sigmas))
-        statistics = np.zeros(M)
-        for i in range(M):
-            permutation = np.random.choice(np.arange(0, N + M2), size=int(N + M2), replace=False)
-            bs_Z = Z[permutation]
-            bs_X2 = bs_Z[:N, :]
-            bs_Y2 = bs_Z[N:, :]
-            bs_Z_sigmas = Z_sigmas[permutation]
-            bs_X2_sigmas = bs_Z_sigmas[:N, :]
-            bs_Y2_sigmas = bs_Z_sigmas[N:, :]
-            statistics[i] = self._statistic(bs_X2, bs_Y2, bs_X2_sigmas, bs_Y2_sigmas)
+    def _bootstrap(self, kernel_matrix, N, M, bootstraps):
+        statistics = np.zeros(bootstraps)
+        for i in range(bootstraps):
+            permutation = np.random.choice(np.arange(0, N + M),
+                                           size=int(N + M), replace=False)
+            shuffled_kernel_matrix = kernel_matrix[permutation,:][:, permutation]
+            statistics[i] = self._statistic(shuffled_kernel_matrix, N, M)
         return statistics
 
     def fit(self, A, B):
@@ -305,62 +312,42 @@ class LatentDistributionTest(BaseInference):
         if self.pass_graph:
             A = import_graph(A)
             B = import_graph(B)
-            # if not is_symmetric(A) or not is_symmetric(B):
-            #     raise NotImplementedError()  # TODO asymmetric case
             if self.n_components is None:
                 # get the last elbow from ZG for each and take the maximum
                 num_dims1 = select_dimension(A)[0][-1]
                 num_dims2 = select_dimension(B)[0][-1]
                 self.n_components = max(num_dims1, num_dims2)
-
             X_hat, Y_hat = self._embed(A, B)
         else:
-            X_hat, Y_hat = A1, A2
-
-        # obtain modified ase
-        if self.sampling:
-            X_hat, Y_hat = self._sample_modified_ase(X_hat, Y_hat)
+            X_hat, Y_hat = A, B
 
         # perform sign flips
         if self.sign_flips:
             X_hat, Y_hat = self._sign_flips(X_hat, Y_hat)
 
-        # estimate the variances using the plug-in estimator from the clt
-        # it is much faster to precompute the variances
-        N, d_X = X_hat.shape # dont really need to do this (n_components)
-        M, d_Y = Y_hat.shape
-        if self.expected:
-            two_samples = np.concatenate([X_hat, Y_hat], axis=0)
-            get_sigma =  self._fit_plug_in_variance_estimator(two_samples)
-            if N == M:
-                X_sigmas = np.zeros((N, d_X, d_X))
-                Y_sigmas = np.zeros((M, d_Y, d_Y))
-            elif N > M:
-                X_sigmas = get_sigma(X_hat) * (N - M) / (N * M)
-                Y_sigmas = np.zeros((M, d_Y, d_Y))
-            else: 
-                X_sigmas = np.zeros((N, d_X, d_X))
-                Y_sigmas = get_sigma(Y_hat) * (M - N) / (N * M)
+        # todo clean up the following block
+        # obtain modified ase
+        if self.sampling:
+            X_hat, Y_hat = self._sample_modified_ase(X_hat, Y_hat)
 
+        if self.expected:
+            # estimate the variances using the plug-in estimator from the clt
+            # it is much faster to precompute the variances
+            X_sigmas, Y_sigmas = self._estimate_correction_variances(X_hat, Y_hat)
             self._rbfk_matrix = self._rbfk_matrix_expected
         else:
-            X_sigmas = np.zeros((N, d_X, d_X))
-            Y_sigmas = np.zeros((M, d_Y, d_Y))
-
+            X_sigmas = np.zeros(X_hat.shape) # never used
+            Y_sigmas = np.zeros(Y_hat.shape) # never used
             self._rbfk_matrix = self._rbfk_matrix_regular
 
         # compute the test statistic and the null distribution
-        U = self._statistic(X_hat, Y_hat, X_sigmas, Y_sigmas)
-        null_distribution = self._bootstrap(X_hat, Y_hat,
-                                            X_sigmas, Y_sigmas,
-                                            self.n_bootstraps)
+        kernel_matrix = self._kernel_matrix(X_hat, Y_hat, X_sigmas, Y_sigmas)
+        U = self._statistic(kernel_matrix, len(X_hat), len(Y_hat))
+        self.null_distribution_ = self._bootstrap(kernel_matrix, 
+                                                  len(X_hat), len(Y_hat),
+                                                  self.n_bootstraps)
 
         # compute the value
-        # TODO reminder: make this into a nicer form
-        self.null_distribution_ = null_distribution
         self.sample_T_statistic_ = U
-        p_value = (len(null_distribution[null_distribution >= U])) / self.n_bootstraps
-        if p_value == 0:
-            p_value = 1 / self.n_bootstraps
-        self.p_ = p_value
+        self.p_ = (np.sum(self.null_distribution_ >= U) + 1) / (self.n_bootstraps + 1)
         return self.p_
