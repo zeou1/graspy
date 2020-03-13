@@ -181,19 +181,19 @@ class LatentDistributionTest(BaseInference):
             Y_sigmas = get_sigma(Y_hat) * (M - N) / (N * M)
         return X_sigmas, Y_sigmas
 
-    def _estimate_correction_variances(self, X_hat, Y_hat, pooled=True):
-        N, d_X = X_hat.shape # dont really need to do this (n_components)
-        M, d_Y = Y_hat.shape
-        if N == M:
-            X_sigmas = np.zeros((N, d_X, d_X))
-            Y_sigmas = np.zeros((M, d_Y, d_Y))
-        elif N > M:
-            X_sigmas = np.ones((N, d_Y, d_Y)) * (N - M) / (N * M)
-            Y_sigmas = np.zeros((M, d_Y, d_Y))
-        else: 
-            X_sigmas = np.zeros((N, d_X, d_X))
-            Y_sigmas = np.ones((M, d_Y, d_Y)) * (M - N) / (N * M)
-        return X_sigmas, Y_sigmas
+#     def _estimate_correction_variances(self, X_hat, Y_hat, pooled=True):
+#         N, d_X = X_hat.shape # dont really need to do this (n_components)
+#         M, d_Y = Y_hat.shape
+#         if N == M:
+#             X_sigmas = np.zeros((N, d_X, d_X))
+#             Y_sigmas = np.zeros((M, d_Y, d_Y))
+#         elif N > M:
+#             X_sigmas = np.ones((N, d_Y, d_Y)) * (N - M) / (N * M)
+#             Y_sigmas = np.zeros((M, d_Y, d_Y))
+#         else: 
+#             X_sigmas = np.zeros((N, d_X, d_X))
+#             Y_sigmas = np.ones((M, d_Y, d_Y)) * (M - N) / (N * M)
+#         return X_sigmas, Y_sigmas
 
     def _sample_modified_ase(self, X, Y):
         n = len(X)
