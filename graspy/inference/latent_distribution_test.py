@@ -18,6 +18,7 @@ from scipy import stats
 
 from ..embed import AdjacencySpectralEmbed, select_dimension
 from ..utils import import_graph, is_symmetric
+from ..align import SeedlessProcrustes
 from .base import BaseInference
 
 
@@ -65,7 +66,8 @@ class LatentDistributionTest(BaseInference):
     """
 
     def __init__(self, n_components=None, n_bootstraps=200, bandwidth=None,
-                 pass_graph=True, sign_flips=True, size_correction=None):
+                 pass_graph=True, sign_flips=True, procrustes=False,
+                 size_correction=None):
         if n_components is not None:
             if not isinstance(n_components, int):
                 msg = "n_components must an int, not {}.".format(type(n_components))
@@ -103,6 +105,7 @@ class LatentDistributionTest(BaseInference):
             self.bandwidth = 0.5
         self.pass_graph = pass_graph
         self.sign_flips = sign_flips
+        self.procrustes = procrustes
 
         if size_correction == 'sampling':
             self.sampling = True
@@ -324,6 +327,11 @@ class LatentDistributionTest(BaseInference):
         # perform sign flips
         if self.sign_flips:
             X_hat, Y_hat = self._sign_flips(X_hat, Y_hat)
+
+        if self.procurstes:
+            aligner = SeedlessProcrustes()
+            Q = aligner.fit(X_hat, Y_hat).Q
+            Y_hat = Y_hat @ Q
 
         # todo clean up the following block
         # obtain modified ase
