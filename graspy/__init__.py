@@ -10,6 +10,7 @@ import graspy.plot
 import graspy.simulations
 import graspy.utils
 import graspy.subgraph
+import graspy.align
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
