@@ -83,14 +83,14 @@ class LatentDistributionTest(BaseInference):
             msg = "bandwidth must an int, not {}".format(type(bandwidth))
             raise TypeError(msg)
 
-        if alginment is None:
+        if alignment is None:
             pass
         elif not isinstance(alignment, str):
             msg = "alignment must be None or a str, not {}".format(type(alignment))
             raise TypeError(msg)
         else:
             alignments_supported = ['sign_flips', 'seedless_procrustes']
-            if alignment not in size_corrections_supported:
+            if alignment not in alignments_supported:
                 msg = "supported alignments are {}".fomat(alignment)
                 raise NotImplementedError(msg)
 
@@ -114,8 +114,6 @@ class LatentDistributionTest(BaseInference):
         if self.bandwidth is None:
             self.bandwidth = 0.5
         self.pass_graph = pass_graph
-        self.sign_flips = sign_flips
-        self.procrustes = procrustes
 
         if size_correction == 'sampling':
             self.sampling = True
