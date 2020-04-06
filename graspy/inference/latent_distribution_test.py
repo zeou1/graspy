@@ -24,12 +24,12 @@ from .base import BaseInference
 
 class LatentDistributionTest(BaseInference):
     """
-    Two-sample hypothesis test for the problem of determining whether two random 
-    dot product graphs have the same distributions of latent positions.
+    Two-sample hypothesis test for the problem of determining whether two
+    random dot product graphs have the same distributions of latent positions.
     
-    This test can operate on two graphs where there is no known matching between
-    the vertices of the two graphs, or even when the number of vertices is different. 
-    Currently, testing is only supported for undirected graphs.
+    This test can operate on two graphs where there is no known matching
+    between the vertices of the two graphs, or even when the number of vertices
+    is different. Currently, testing is only supported for undirected graphs.
 
     Read more in the :ref:`tutorials <inference_tutorials>`
 
@@ -45,6 +45,47 @@ class LatentDistributionTest(BaseInference):
     bandwidth : float, optional (default=0.5)
         Bandwidth to use for gaussian kernel. If None,
         the median heuristic will be used.
+
+    pass_graph : boolean, optional (default=True)
+        Changes the expected input form full graphs to embeddings if False.
+
+    alignment : None, or string, {'sign_flips' (default), 'seedless_procrustes'}
+        There is an inherent non-identifiability when using estimating the
+        latent positions of an RDPG graph 
+
+        - None
+            does not perform any alignment.
+        - 'seedless_procrustes'
+            uses the EM seedless procrustes procedure to align two graphs,
+            see Agterberg et al. (2020) TODO cite when possible
+            note that it initializes with a Q obtained from the sign flips trick.
+            computionally expensive for large number of the dimensions;
+            equivalent to 'sign_flips' in the n_components=1 case.
+        - 'sign_flips'
+            for each dimension, if two embeddings have medians with varying signs,
+            flips all signs along this dimension for one of hte graphs.
+   
+    size_correction : None (default), or string, {'sampling', 'expected'}
+        The test degrades in validity when the sizes of two graphs diverge from
+        each other, unless the way kernel matrix is computed is modified.
+        See Alyakin & Agterberg & Helm & Priebe. TODO cite when possible.
+
+        - None
+            does not perform any modifications
+        - 'sampling'
+            in case when two graphs are not of equal sizes, estimates the
+            plug-in estimator for the variance and uses it to inject
+            appropriately scaled noise into the embedding of the larger graph.
+            overlaps exactly with no modifications for graphs of the same size
+        - 'expected'
+            in case when two graphs are not of equal sizes, estimates the
+            plug-in estimator for the variance and uses it to computes expected
+            gaussian kernel between two points if noise was to be injected.
+            overlaps exactly with no modifications for graphs of the same size
+
+    embedding : string, { 'ase' (default), 'omnibus'}
+        String describing the embedding method to use:
+
 
     Attributes
     ----------
@@ -145,11 +186,15 @@ class LatentDistributionTest(BaseInference):
         plug-in estimator from the RDPG Central Limit Theorem.
         (Athreya et al., RDPG survey, Equation 10)
 
-        X : adjacency spectral embedding of a graph
-            numpy array in M_{n,d}
+        Parameters
+        ----------
+        X : np.ndarray, shape (n, d)
+            adjacency spectral embedding of a graph
 
-        returns:
-        a function that estimates variance (see below)
+        Returns
+        -------
+        plug_in_variance_estimtor: functions
+            a function that estimates variance (see below)
         """
         n = len(X)
         delta = 1 / (n) * (X.T @ X)
@@ -160,11 +205,16 @@ class LatentDistributionTest(BaseInference):
             Takes in a point of a matrix of points in R^d and returns an
             estimated covariance matrix for each of the points
 
-            x: points to estimate variance at. numpy (n, d). 
-            if 1-dimensional - reshaped to (1, d)
+            Parameters:
+            -----------
+            x: np.ndarray, shape (n, d)
+                points to estimate variance at
+                if 1-dimensional - reshaped to (1, d)
 
-            returns:
-            (n, d, d) n variance-covariance matrices of the estimated points.
+            Returns:
+            -------
+            covariances: np.ndarray, shape (n, d, d)
+                n estimated variance-covariance matrices of the points provided
             """
             if x.ndim < 2:
                 x = x.reshape(1, -1)
@@ -176,7 +226,8 @@ class LatentDistributionTest(BaseInference):
             # for i in range(n):
             #     middle_term += np.multiply.outer((x @ X[i] - (x @ X[i]) ** 2),
             #                                      np.outer(X[i], X[i]))
-            return delta_inverse @ (middle_term / n) @ delta_inverse
+            covariances = delta_inverse @ (middle_term / n) @ delta_inverse
+            return covariances
 
         return plug_in_variance_estimator
 
@@ -321,8 +372,8 @@ class LatentDistributionTest(BaseInference):
         Parameters
         ----------
         A, B : nx.Graph, nx.DiGraph, nx.MultiDiGraph, nx.MultiGraph, np.ndarray
-            The two graphs to run a hypothesis test on.
-            or two embeddings if pass_graph was set to false
+            The two graphs to run a hypothesis test on or two embeddings if
+            pass_graph was set to false
 
         Returns
         -------
