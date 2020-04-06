@@ -187,7 +187,7 @@ class SeedlessProcrustes():
         self.P = P_i
         return self
 
-    def fit_predict(self, X, Y, Q=None):
+    def fit_predict(self, X, Y, Q=None, P=None):
         '''
         matches datasets, returning the final orthogonal alignment solution
 
@@ -213,5 +213,5 @@ class SeedlessProcrustes():
         Q : array, size (d, d) where d is the dimensionality of the datasets
             final orthogonal matrix
         '''
-        self.fit(X, Y, Q)
+        self.fit(X, Y, Q, P)
         return self.Q
