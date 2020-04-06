@@ -176,7 +176,7 @@ class SeedlessProcrustes():
             if P is None:
                 Q = self._sign_flips(X, Y)
             else:
-                Q = self._optimal_transport(X, Y, P, lambd=self.lambda_init)
+                Q = self._procrustes(X, Y, P)
 
         lambda_current = self.lambda_init
         while lambda_current > self.lambda_final:
