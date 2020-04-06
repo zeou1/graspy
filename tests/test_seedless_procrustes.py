@@ -8,6 +8,7 @@ import numpy as np
 from scipy import stats
 from graspy.align import SeedlessProcrustes
 
+
 class TestSeedlessProcrustes(unittest.TestCase):
     def test_bad_kwargs(self):
         with self.assertRaises(TypeError):
@@ -36,7 +37,7 @@ class TestSeedlessProcrustes(unittest.TestCase):
         Y = np.arange(6).reshape(3, 2) @ np.diag([1, -1]) + 0.5
 
         aligner = SeedlessProcrustes()
-        test = aligner._sign_flips(X, Y) 
+        test = aligner._sign_flips(X, Y)
         answer = np.array([[1, 0], [0, -1]])
         self.assertTrue(np.all(test == answer))
 
@@ -50,6 +51,7 @@ class TestSeedlessProcrustes(unittest.TestCase):
         aligner = SeedlessProcrustes()
         Q = aligner.fit_predict(X, Y, Q=np.eye(4))
         self.assertTrue(np.all(np.isclose(Q, W)))
+
 
 if __name__ == "__main__":
     unittest.main()

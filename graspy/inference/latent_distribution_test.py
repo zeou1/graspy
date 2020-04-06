@@ -65,8 +65,15 @@ class LatentDistributionTest(BaseInference):
         random graphs." Bernoulli, 23(3), 1599-1630.
     """
 
-    def __init__(self, n_components=None, n_bootstraps=200, bandwidth=None,
-                 pass_graph=True, alignment='sign_flips', size_correction=None):
+    def __init__(
+        self,
+        n_components=None,
+        n_bootstraps=200,
+        bandwidth=None,
+        pass_graph=True,
+        alignment="sign_flips",
+        size_correction=None,
+    ):
         if n_components is not None:
             if not isinstance(n_components, int):
                 msg = "n_components must an int, not {}.".format(type(n_components))
@@ -89,7 +96,7 @@ class LatentDistributionTest(BaseInference):
             msg = "alignment must be None or a str, not {}".format(type(alignment))
             raise TypeError(msg)
         else:
-            alignments_supported = ['sign_flips', 'seedless_procrustes']
+            alignments_supported = ["sign_flips", "seedless_procrustes"]
             if alignment not in alignments_supported:
                 msg = "supported alignments are {}".fomat(alignment)
                 raise NotImplementedError(msg)
@@ -97,12 +104,16 @@ class LatentDistributionTest(BaseInference):
         if size_correction is None:
             pass
         elif not isinstance(size_correction, str):
-            msg = "size_correction must be None or a str, not {}".format(type(size_correction))
+            msg = "size_correction must be None or a str, not {}".format(
+                type(size_correction)
+            )
             raise TypeError(msg)
         else:
-            size_corrections_supported = ['sampling', 'expected']
+            size_corrections_supported = ["sampling", "expected"]
             if size_correction not in size_corrections_supported:
-                msg = "supported size corrections are {}".fomat(size_corrections_supported)
+                msg = "supported size corrections are {}".fomat(
+                    size_corrections_supported
+                )
                 raise NotImplementedError(msg)
 
         super().__init__(embedding="ase", n_components=n_components)
@@ -115,10 +126,10 @@ class LatentDistributionTest(BaseInference):
             self.bandwidth = 0.5
         self.pass_graph = pass_graph
 
-        if size_correction == 'sampling':
+        if size_correction == "sampling":
             self.sampling = True
             self.expected = False
-        elif size_correction == 'expected':
+        elif size_correction == "expected":
             self.sampling = False
             self.expected = True
         else:
@@ -128,7 +139,7 @@ class LatentDistributionTest(BaseInference):
         self.alignment = alignment
 
     def _fit_plug_in_variance_estimator(self, X):
-        '''
+        """
         Takes in ASE of a graph and returns a function that estimates
         the variance-covariance matrix at a given point using the
         plug-in estimator from the RDPG Central Limit Theorem.
@@ -139,13 +150,13 @@ class LatentDistributionTest(BaseInference):
 
         returns:
         a function that estimates variance (see below)
-        '''
+        """
         n = len(X)
         delta = 1 / (n) * (X.T @ X)
         delta_inverse = np.linalg.inv(delta)
 
         def plug_in_variance_estimator(x):
-            '''
+            """
             Takes in a point of a matrix of points in R^d and returns an
             estimated covariance matrix for each of the points
 
@@ -154,24 +165,23 @@ class LatentDistributionTest(BaseInference):
 
             returns:
             (n, d, d) n variance-covariance matrices of the estimated points.
-            '''
+            """
             if x.ndim < 2:
                 x = x.reshape(1, -1)
-            middle_term_scalar = (x @ X.T - (x @ X.T) ** 2)
-            middle_term_matrix = np.einsum('bi,bo->bio', X, X) # can be precomputed
-            middle_term = np.tensordot(middle_term_scalar,
-                                    middle_term_matrix, axes = 1)
+            middle_term_scalar = x @ X.T - (x @ X.T) ** 2
+            middle_term_matrix = np.einsum("bi,bo->bio", X, X)  # can be precomputed
+            middle_term = np.tensordot(middle_term_scalar, middle_term_matrix, axes=1)
             # preceeding three lines are a vectorized version of this
             # middle_term = 0
             # for i in range(n):
             #     middle_term += np.multiply.outer((x @ X[i] - (x @ X[i]) ** 2),
             #                                      np.outer(X[i], X[i]))
-            return delta_inverse @ (middle_term / n) @ delta_inverse 
-        
+            return delta_inverse @ (middle_term / n) @ delta_inverse
+
         return plug_in_variance_estimator
 
     def _estimate_correction_variances(self, X_hat, Y_hat, pooled=True):
-        N, d_X = X_hat.shape # dont really need to do this (n_components)
+        N, d_X = X_hat.shape  # dont really need to do this (n_components)
         M, d_Y = Y_hat.shape
         if N == M:
             X_sigmas = np.zeros((N, d_X, d_X))
@@ -184,7 +194,7 @@ class LatentDistributionTest(BaseInference):
                 get_sigma = self._fit_plug_in_variance_estimator(X_hat)
             X_sigmas = get_sigma(X_hat) * (N - M) / (N * M)
             Y_sigmas = np.zeros((M, d_Y, d_Y))
-        else: 
+        else:
             if pooled:
                 two_samples = np.concatenate([X_hat, Y_hat], axis=0)
                 get_sigma = self._fit_plug_in_variance_estimator(two_samples)
@@ -194,19 +204,19 @@ class LatentDistributionTest(BaseInference):
             Y_sigmas = get_sigma(Y_hat) * (M - N) / (N * M)
         return X_sigmas, Y_sigmas
 
-#     def _estimate_correction_variances(self, X_hat, Y_hat, pooled=True):
-#         N, d_X = X_hat.shape # dont really need to do this (n_components)
-#         M, d_Y = Y_hat.shape
-#         if N == M:
-#             X_sigmas = np.zeros((N, d_X, d_X))
-#             Y_sigmas = np.zeros((M, d_Y, d_Y))
-#         elif N > M:
-#             X_sigmas = np.ones((N, d_Y, d_Y)) * (N - M) / (N * M)
-#             Y_sigmas = np.zeros((M, d_Y, d_Y))
-#         else: 
-#             X_sigmas = np.zeros((N, d_X, d_X))
-#             Y_sigmas = np.ones((M, d_Y, d_Y)) * (M - N) / (N * M)
-#         return X_sigmas, Y_sigmas
+    #     def _estimate_correction_variances(self, X_hat, Y_hat, pooled=True):
+    #         N, d_X = X_hat.shape # dont really need to do this (n_components)
+    #         M, d_Y = Y_hat.shape
+    #         if N == M:
+    #             X_sigmas = np.zeros((N, d_X, d_X))
+    #             Y_sigmas = np.zeros((M, d_Y, d_Y))
+    #         elif N > M:
+    #             X_sigmas = np.ones((N, d_Y, d_Y)) * (N - M) / (N * M)
+    #             Y_sigmas = np.zeros((M, d_Y, d_Y))
+    #         else:
+    #             X_sigmas = np.zeros((N, d_X, d_X))
+    #             Y_sigmas = np.ones((M, d_Y, d_Y)) * (M - N) / (N * M)
+    #         return X_sigmas, Y_sigmas
 
     def _sample_modified_ase(self, X, Y):
         n = len(X)
@@ -217,13 +227,17 @@ class LatentDistributionTest(BaseInference):
             X_sigmas, _ = self._estimate_correction_variances(X, Y)
             X_sampled = np.zeros(X.shape)
             for i in range(n):
-                X_sampled[i,:] = X[i, :] + stats.multivariate_normal.rvs(cov=X_sigmas[i])
+                X_sampled[i, :] = X[i, :] + stats.multivariate_normal.rvs(
+                    cov=X_sigmas[i]
+                )
             return X_sampled, Y
-        else: 
+        else:
             _, Y_sigmas = self._estimate_correction_variances(X, Y)
             Y_sampled = np.zeros(Y.shape)
             for i in range(m):
-                Y_sampled[i,:] = Y[i, :] + stats.multivariate_normal.rvs(cov=Y_sigmas[i])
+                Y_sampled[i, :] = Y[i, :] + stats.multivariate_normal.rvs(
+                    cov=Y_sigmas[i]
+                )
             return X, Y_sampled
 
     def _rbfk_matrix_regular(self, X, Y, X_sigmas=None, Y_sigmas=None):
@@ -248,8 +262,9 @@ class LatentDistributionTest(BaseInference):
         sigma = np.expand_dims(X_sigmas, 1) + np.expand_dims(Y_sigmas, 0)
 
         inverted_matrix = np.linalg.inv(np.eye(d) + 2 * c * sigma)
-        numer = np.exp(- c * np.expand_dims(mu, -2)
-                       @ inverted_matrix @ np.expand_dims(mu, -1))
+        numer = np.exp(
+            -c * np.expand_dims(mu, -2) @ inverted_matrix @ np.expand_dims(mu, -1)
+        )
         denom = np.linalg.det(np.eye(d) + 2 * c * sigma) ** (1 / 2)
         kernel_matrix = numer.reshape(n, m) / denom
 
@@ -262,9 +277,8 @@ class LatentDistributionTest(BaseInference):
         Y_rbfk = self._rbfk_matrix(Y, Y, Y_sigmas, Y_sigmas)
         np.fill_diagonal(Y_rbfk, 1)
         XY_rbfk = self._rbfk_matrix(X, Y, X_sigmas, Y_sigmas)
-        # assemble one large kernel matrix 
-        full_kernel_matrix = np.block([[X_rbfk, XY_rbfk],
-                                        [XY_rbfk.T, Y_rbfk]]) 
+        # assemble one large kernel matrix
+        full_kernel_matrix = np.block([[X_rbfk, XY_rbfk], [XY_rbfk.T, Y_rbfk]])
         return full_kernel_matrix
 
     def _statistic(self, kernel_matrix, N, M):
@@ -293,9 +307,10 @@ class LatentDistributionTest(BaseInference):
     def _bootstrap(self, kernel_matrix, N, M, bootstraps):
         statistics = np.zeros(bootstraps)
         for i in range(bootstraps):
-            permutation = np.random.choice(np.arange(0, N + M),
-                                           size=int(N + M), replace=False)
-            shuffled_kernel_matrix = kernel_matrix[permutation,:][:, permutation]
+            permutation = np.random.choice(
+                np.arange(0, N + M), size=int(N + M), replace=False
+            )
+            shuffled_kernel_matrix = kernel_matrix[permutation, :][:, permutation]
             statistics[i] = self._statistic(shuffled_kernel_matrix, N, M)
         return statistics
 
@@ -327,11 +342,11 @@ class LatentDistributionTest(BaseInference):
             X_hat, Y_hat = A, B
 
         # perform sign slips or seedless procrustes
-        if self.alignment == 'sign_flips':
+        if self.alignment == "sign_flips":
             aligner = SeedlessProcrustes()
             Q = aligner._sign_flips(X_hat, Y_hat)
             Y_hat = Y_hat @ Q
-        elif self.alignment == 'seedless_procrustes':
+        elif self.alignment == "seedless_procrustes":
             aligner = SeedlessProcrustes()
             Q = aligner.fit_predict(X_hat, Y_hat)
             Y_hat = Y_hat @ Q
@@ -347,16 +362,16 @@ class LatentDistributionTest(BaseInference):
             X_sigmas, Y_sigmas = self._estimate_correction_variances(X_hat, Y_hat)
             self._rbfk_matrix = self._rbfk_matrix_expected
         else:
-            X_sigmas = np.zeros(X_hat.shape) # never used
-            Y_sigmas = np.zeros(Y_hat.shape) # never used
+            X_sigmas = np.zeros(X_hat.shape)  # never used
+            Y_sigmas = np.zeros(Y_hat.shape)  # never used
             self._rbfk_matrix = self._rbfk_matrix_regular
 
         # compute the test statistic and the null distribution
         kernel_matrix = self._kernel_matrix(X_hat, Y_hat, X_sigmas, Y_sigmas)
         U = self._statistic(kernel_matrix, len(X_hat), len(Y_hat))
-        self.null_distribution_ = self._bootstrap(kernel_matrix, 
-                                                  len(X_hat), len(Y_hat),
-                                                  self.n_bootstraps)
+        self.null_distribution_ = self._bootstrap(
+            kernel_matrix, len(X_hat), len(Y_hat), self.n_bootstraps
+        )
 
         # compute the value
         self.sample_T_statistic_ = U

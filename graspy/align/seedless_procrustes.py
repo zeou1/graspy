@@ -14,7 +14,8 @@
 
 import numpy as np
 
-class SeedlessProcrustes():
+
+class SeedlessProcrustes:
     r"""
 
     Matches datasets by iterating over a decreasing sequence of
@@ -58,10 +59,16 @@ class SeedlessProcrustes():
     ----------
     .. [1] Agterberg, J.
     """
-    
+
     def __init__(
-        self, lambda_init=0.5, lambda_final=0.001, alpha=0.95,
-        optimal_transport_eps=0.01, iterative_eps=0.01, num_reps=100):
+        self,
+        lambda_init=0.5,
+        lambda_final=0.001,
+        alpha=0.95,
+        optimal_transport_eps=0.01,
+        iterative_eps=0.01,
+        num_reps=100,
+    ):
         if type(lambda_init) is not float:
             raise TypeError()
         if type(lambda_final) is not float:
@@ -77,7 +84,8 @@ class SeedlessProcrustes():
         if alpha < 0 or alpha > 1:
             raise ValueError(
                 "{} is an invalid value of alpha must be strictly between 0 and 1".format(
-                alpha)
+                    alpha
+                )
             )
         if optimal_transport_eps <= 0:
             raise ValueError(
@@ -103,7 +111,7 @@ class SeedlessProcrustes():
         self.optimal_transport_eps = optimal_transport_eps
         self.iterative_eps = iterative_eps
         self.num_reps = num_reps
-    
+
     def _procrustes(self, X, Y, P_i):
         u, w, vt = np.linalg.svd(X.T @ P_i @ Y)
         Q = u.dot(vt)
@@ -135,7 +143,7 @@ class SeedlessProcrustes():
         for i in range(self.num_reps):
             P_i = self._optimal_transport(X, Y, Q)
             Q = self._procrustes(X, Y, P_i)
-            c = np.linalg.norm(X @ Q - P_i @ Y, ord='fro')
+            c = np.linalg.norm(X @ Q - P_i @ Y, ord="fro")
             if c < self.iterative_eps:
                 break
         return P_i, Q
@@ -146,9 +154,9 @@ class SeedlessProcrustes():
         val = np.multiply(X_medians, Y_medians)
         t = (val > 0) * 2 - 1
         return np.diag(t)
-    
+
     def fit(self, X, Y, Q=None, P=None):
-        '''
+        """
         matches the datasets
 
         Parameters
@@ -171,7 +179,7 @@ class SeedlessProcrustes():
         Returns
         -------
         self: returns an instance of self
-        '''
+        """
         # TODO check bad matrix inputs
         if Q is None:
             if P is None:
@@ -182,15 +190,14 @@ class SeedlessProcrustes():
 
         lambda_current = self.lambda_init
         while lambda_current > self.lambda_final:
-            P_i, Q = self._iterative_optimal_transport(X, Y, Q,
-                                                      lambd=lambda_current)
+            P_i, Q = self._iterative_optimal_transport(X, Y, Q, lambd=lambda_current)
             lambda_current = self.alpha * lambda_current
         self.Q = Q
         self.P = P_i
         return self
 
     def fit_predict(self, X, Y, Q=None, P=None):
-        '''
+        """
         matches datasets, returning the final orthogonal alignment solution
 
         Parameters
@@ -214,6 +221,6 @@ class SeedlessProcrustes():
         -------
         Q : array, size (d, d) where d is the dimensionality of the datasets
             final orthogonal matrix
-        '''
+        """
         self.fit(X, Y, Q, P)
         return self.Q
