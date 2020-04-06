@@ -172,9 +172,11 @@ class SeedlessProcrustes():
         -------
         self: returns an instance of self
         '''
+        # TODO check bad matrix inputs
         if Q is None:
             if P is None:
                 Q = self._sign_flips(X, Y)
+                # Q = np.eye(X.shape[1])
             else:
                 Q = self._procrustes(X, Y, P)
 

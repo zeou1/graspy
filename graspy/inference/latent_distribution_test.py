@@ -60,14 +60,13 @@ class LatentDistributionTest(BaseInference):
 
     References
     ----------
-    .. [1] Tang, M., Athreya, A., Sussman, D. L., Lyzinski, V., & Priebe, C. E. (2017). 
-        "A nonparametric two-sample hypothesis testing problem for random graphs."
-        Bernoulli, 23(3), 1599-1630.
+    .. [1] Tang, M., Athreya, A., Sussman, D. L., Lyzinski, V., & Priebe, C. E.
+        (2017). "A nonparametric two-sample hypothesis testing problem for
+        random graphs." Bernoulli, 23(3), 1599-1630.
     """
 
     def __init__(self, n_components=None, n_bootstraps=200, bandwidth=None,
-                 pass_graph=True, sign_flips=True, procrustes=False,
-                 size_correction=None):
+                 pass_graph=True, alignment='sign_flips', size_correction=None):
         if n_components is not None:
             if not isinstance(n_components, int):
                 msg = "n_components must an int, not {}.".format(type(n_components))
@@ -84,15 +83,26 @@ class LatentDistributionTest(BaseInference):
             msg = "bandwidth must an int, not {}".format(type(bandwidth))
             raise TypeError(msg)
 
+        if alginment is None:
+            pass
+        elif not isinstance(alignment, str):
+            msg = "alignment must be None or a str, not {}".format(type(alignment))
+            raise TypeError(msg)
+        else:
+            alignments_supported = ['sign_flips', 'seedless_procrustes']
+            if alignment not in size_corrections_supported:
+                msg = "supported alignments are {}".fomat(alignment)
+                raise NotImplementedError(msg)
+
         if size_correction is None:
             pass
         elif not isinstance(size_correction, str):
-            msg = "size_correction must a str, not {}".format(type(bandwidth))
+            msg = "size_correction must be None or a str, not {}".format(type(size_correction))
             raise TypeError(msg)
         else:
             size_corrections_supported = ['sampling', 'expected']
             if size_correction not in size_corrections_supported:
-                msg = "supported size corrections are {}".fomat(size_corrections)
+                msg = "supported size corrections are {}".fomat(size_corrections_supported)
                 raise NotImplementedError(msg)
 
         super().__init__(embedding="ase", n_components=n_components)
@@ -116,6 +126,8 @@ class LatentDistributionTest(BaseInference):
         else:
             self.sampling = False
             self.expected = False
+
+        self.alignment = alignment
 
     def _fit_plug_in_variance_estimator(self, X):
         '''
@@ -280,14 +292,6 @@ class LatentDistributionTest(BaseInference):
             raise ValueError("Input graphs do not have same directedness")
         return X1_hat, X2_hat
 
-    def _sign_flips(self, X1, X2):
-        X1_medians = np.median(X1, axis=0)
-        X2_medians = np.median(X2, axis=0)
-        val = np.multiply(X1_medians, X2_medians)
-        t = (val > 0) * 2 - 1
-        X1 = np.multiply(t.reshape(-1, 1).T, X1)
-        return X1, X2
-
     def _bootstrap(self, kernel_matrix, N, M, bootstraps):
         statistics = np.zeros(bootstraps)
         for i in range(bootstraps):
@@ -324,16 +328,17 @@ class LatentDistributionTest(BaseInference):
         else:
             X_hat, Y_hat = A, B
 
-        # perform sign flips
-        if self.sign_flips:
-            X_hat, Y_hat = self._sign_flips(X_hat, Y_hat)
-
-        if self.procurstes:
+        # perform sign slips or seedless procrustes
+        if self.alignment == 'sign_flips':
             aligner = SeedlessProcrustes()
-            Q = aligner.fit(X_hat, Y_hat).Q
+            Q = aligner._sign_flips(X_hat, Y_hat)
+            Y_hat = Y_hat @ Q
+        elif self.alignment == 'seedless_procrustes':
+            aligner = SeedlessProcrustes()
+            Q = aligner.fit_transform(X_hat, Y_hat)
             Y_hat = Y_hat @ Q
 
-        # todo clean up the following block
+        # todo clean up the following block of beej-code
         # obtain modified ase
         if self.sampling:
             X_hat, Y_hat = self._sample_modified_ase(X_hat, Y_hat)
