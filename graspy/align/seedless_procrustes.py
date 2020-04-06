@@ -139,28 +139,44 @@ class SeedlessProcrustes():
             if c < self.iterative_eps:
                 break
         return P_i, Q
+
+    def _sign_flips(self, X, Y):
+        X_medians = np.median(X, axis=0)
+        Y_medians = np.median(Y, axis=0)
+        val = np.multiply(X_medians, Y_medians)
+        t = (val > 0) * 2 - 1
+        return np.diag(t)
     
-    def fit(self, X, Y, Q=None):
+    def fit(self, X, Y, Q=None, P=None):
         '''
         matches the datasets
 
         Parameters
         ----------
-        X: np.ndarray object
-            an n x d dataset of vectors
+        X: np.ndarray, shape (n, d)
+            first dataset of vectors
 
-        Y: np.ndarray object
-            an m x d dataset of vectors
+        Y: np.ndarray, shape (m, d)
+            second dataset of vectors
 
-        Q: None (deafault) or np.ndarray object
-            a d x d initial guess. if none - set to identity
+        Q: np.ndarray, shape (d, d) or None, optional (default=None)
+            an initial guess for the othogonal alignment matrix, if such exists.
+            If None - initializes using an initial guess for P. If that is also
+            None - initializes using the median heuristic sign flips.
+
+        P: np.ndarray, shape (n, m) or None, optional (default=None)
+            an initial guess for the initial transpot matrix.
+            Only matters if Q=None. 
 
         Returns
         -------
         self: returns an instance of self
         '''
         if Q is None:
-            Q = np.eye(X.shape[1])
+            if P is None:
+                Q = self._sign_flips(X, Y)
+            else:
+                Q = self._optimal_transport(X, Y, P, lambd=self.lambda_init)
 
         lambda_current = self.lambda_init
         while lambda_current > self.lambda_final:
@@ -173,18 +189,24 @@ class SeedlessProcrustes():
 
     def fit_predict(self, X, Y, Q=None):
         '''
-        matches datasets, returning the final alignment solution
+        matches datasets, returning the final orthogonal alignment solution
 
         Parameters
         ----------
-        X: np.ndarray object
-            an n x d dataset of vectors
+        X: np.ndarray, shape (n, d)
+            first dataset of vectors
 
-        Y: np.ndarray object
-            an m x d dataset of vectors
+        Y: np.ndarray, shape (m, d)
+            second dataset of vectors
 
-        Q: None (deafault) or np.ndarray object
-            a d x d initial guess. if none - set to identity
+        Q: np.ndarray, shape (d, d) or None, optional (default=None)
+            an initial guess for the othogonal alignment matrix, if such exists.
+            If None - initializes using an initial guess for P. If that is also
+            None - initializes using the median heuristic sign flips.
+
+        P: np.ndarray, shape (n, m) or None, optional (default=None)
+            an initial guess for the initial transpot matrix.
+            Only matters if Q=None. 
 
         Returns
         -------
