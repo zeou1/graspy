@@ -110,7 +110,7 @@ class LatentDistributionTest(BaseInference):
         self.n_bootstraps = n_bootstraps
         self.bandwidth = bandwidth
         # moved this to here out of the methods
-        # TODO implemented adaptively selected bandwidth
+        # TODO implement adaptively selected bandwidth
         if self.bandwidth is None:
             self.bandwidth = 0.5
         self.pass_graph = pass_graph
@@ -333,7 +333,7 @@ class LatentDistributionTest(BaseInference):
             Y_hat = Y_hat @ Q
         elif self.alignment == 'seedless_procrustes':
             aligner = SeedlessProcrustes()
-            Q = aligner.fit_transform(X_hat, Y_hat)
+            Q = aligner.fit_predict(X_hat, Y_hat)
             Y_hat = Y_hat @ Q
 
         # todo clean up the following block of beej-code
