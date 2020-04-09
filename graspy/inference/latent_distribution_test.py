@@ -396,11 +396,11 @@ class LatentDistributionTest(BaseInference):
         if self.alignment == "sign_flips":
             aligner = SeedlessProcrustes()
             Q = aligner._sign_flips(X_hat, Y_hat)
-            Y_hat = Y_hat @ Q
+            X_hat = X_hat @ Q
         elif self.alignment == "seedless_procrustes":
             aligner = SeedlessProcrustes()
             Q = aligner.fit_predict(X_hat, Y_hat)
-            Y_hat = Y_hat @ Q
+            X_hat = X_hat @ Q
 
         # todo clean up the following block of beej-code
         # obtain modified ase
