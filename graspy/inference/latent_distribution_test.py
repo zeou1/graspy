@@ -406,7 +406,7 @@ class LatentDistributionTest(BaseInference):
             aligner = SeedlessProcrustes()
             Q = aligner.fit_predict(X_hat, Y_hat)
             X_hat = X_hat @ Q
-        elif self.alignments == "procrustes":
+        elif self.alignment == "procrustes":
             if X_hat.shape != Y_hat.shape:
                 msg = "regular procrustes alignment can only be used for graphs of equal size"
                 raise ValueError(msg.format(n_bootstraps))
