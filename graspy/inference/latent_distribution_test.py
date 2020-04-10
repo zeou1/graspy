@@ -22,6 +22,9 @@ from ..align import SeedlessProcrustes
 from .base import BaseInference
 
 
+from scipy.spatial import procrustes
+
+
 class LatentDistributionTest(BaseInference):
     """
     Two-sample hypothesis test for the problem of determining whether two
@@ -64,6 +67,8 @@ class LatentDistributionTest(BaseInference):
         - 'sign_flips'
             for each dimension, if two embeddings have medians with varying signs,
             flips all signs along this dimension for one of hte graphs.
+        - 'procrustes'
+            performs the regular procrustes. only works if n = m.
    
     size_correction : None (default), or string, {'sampling', 'expected'}
         The test degrades in validity when the sizes of two graphs diverge from
@@ -137,9 +142,9 @@ class LatentDistributionTest(BaseInference):
             msg = "alignment must be None or a str, not {}".format(type(alignment))
             raise TypeError(msg)
         else:
-            alignments_supported = ["sign_flips", "seedless_procrustes"]
+            alignments_supported = ["sign_flips", "procrustes", "seedless_procrustes"]
             if alignment not in alignments_supported:
-                msg = "supported alignments are {}".fomat(alignment)
+                msg = "supported alignments are {}".format(alignment)
                 raise NotImplementedError(msg)
 
         if size_correction is None:
@@ -401,6 +406,11 @@ class LatentDistributionTest(BaseInference):
             aligner = SeedlessProcrustes()
             Q = aligner.fit_predict(X_hat, Y_hat)
             X_hat = X_hat @ Q
+        elif self.alignments == "procrustes":
+            if X_hat.shape != Y_hat.shape:
+                msg = "regular procrustes alignment can only be used for graphs of equal size"
+                raise ValueError(msg.format(n_bootstraps))
+            X_hat = X_hat @ orthogonal_procrustes(X_hat, Y_hat)[0]
 
         # todo clean up the following block of beej-code
         # obtain modified ase
