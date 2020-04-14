@@ -117,7 +117,7 @@ class LatentDistributionTest(BaseInference):
         n_bootstraps=200,
         bandwidth=None,
         pass_graph=True,
-        alignment="sign_flips",
+        alignment="seedless_procrustes",
         size_correction=None,
     ):
         if n_components is not None:
