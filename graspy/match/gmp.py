@@ -39,17 +39,32 @@ class GraphMatch:
 
     n_init : int, positive (default = 1)
         Number of random initializations of the starting permutation matrix that
-        the FAQ algorithm will undergo. n_init automatically set to 1 if
-        init_method = 'barycenter'
+        the FAQ algorithm will undergo. 
 
-    init_method : string (default = 'barycenter')
-        The initial position chosen
+    init : string (default = 'barycenter') or np.ndarry of same shape as A, B
+        The initial position chosen (with optional random deviations from this position
+        specified by `init_weight`)
 
         "barycenter" : the non-informative “flat doubly stochastic matrix,”
         :math:`J=1*1^T /n` , i.e the barycenter of the feasible region
 
-        "rand" : some random point near :math:`J, (J+K)/2`, where K is some random doubly
-        stochastic matrix
+        "identity" : the :math:`n \times n` identity matrix is used as an initial position, 
+        implying that the relative sorting of the input matrices is already informative.
+
+        If an ndarray is passed, it should have the same shape as A and B, and its rows 
+        and columns must sum to 1 (doubly stochastic).
+    
+    init_weight : float, between 0 and 1 (default = 0.5)
+        Specifies the amount of random perturbation from the starting initialization
+        specified by `init`).
+
+        For each initialization, a new random doubly stochastic matrix :math:`K` is
+        generated. The starting point for that initialization is then given by 
+        :math:`\alpha J + (1 - \alpha) K` where :math:`\alpha` is the `init_weight` and 
+        :math:`K` is the matrix specified by `init`.
+
+        If `init_weight` is 1, the algorithm will proceed deterministically, and 
+        `n_init` will be automatically set to 1.
 
     max_iter : int, positive (default = 30)
         Integer specifying the max number of Franke-Wolfe iterations.
@@ -96,11 +111,13 @@ class GraphMatch:
     def __init__(
         self,
         n_init=1,
-        init_method="barycenter",
+        init="barycenter",
+        init_weight=0.5,
         max_iter=30,
         shuffle_input=True,
         eps=0.1,
         gmp=True,
+        init_weight=0.5,
     ):
 
         if type(n_init) is int and n_init > 0:
@@ -108,14 +125,21 @@ class GraphMatch:
         else:
             msg = '"n_init" must be a positive integer'
             raise TypeError(msg)
-        if init_method == "rand":
-            self.init_method = "rand"
-        elif init_method == "barycenter":
-            self.init_method = "barycenter"
-            self.n_init = 1
-        else:
-            msg = 'Invalid "init_method" parameter string'
+
+        if isinstance(init, str):
+            if init not in ["barycenter", "identity"]:
+                msg = 'Invalid "init" parameter string'
+                raise ValueError(msg)
+        self.init = init
+
+        if not isinstance(init_weight, (float, int)):
+            msg = '"init_weight" must be a float or int'
+            raise TypeError(msg)
+
+        if init_weight < 0 or init_weight > 1:
+            msg = '"init_weight" must be between 0 and 1'
             raise ValueError(msg)
+
         if max_iter > 0 and type(max_iter) is int:
             self.max_iter = max_iter
         else:
@@ -165,32 +189,13 @@ class GraphMatch:
         B = check_array(B, copy=True, ensure_2d=True)
         seeds_A = column_or_1d(seeds_A)
         seeds_B = column_or_1d(seeds_B)
-
-        if A.shape[0] != B.shape[0]:
-            msg = "Adjacency matrices must be of equal size"
-            raise ValueError(msg)
-        elif A.shape[0] != A.shape[1] or B.shape[0] != B.shape[1]:
-            msg = "Adjacency matrix entries must be square"
-            raise ValueError(msg)
-        elif seeds_A.shape[0] != seeds_B.shape[0]:
-            msg = "Seed arrays must be of equal size"
-            raise ValueError(msg)
-        elif seeds_A.shape[0] > A.shape[0]:
-            msg = "There cannot be more seeds than there are nodes"
-            raise ValueError(msg)
-        elif not (seeds_A >= 0).all() or not (seeds_B >= 0).all():
-            msg = "Seed array entries must be greater than or equal to zero"
-            raise ValueError(msg)
-        elif (
-            not (seeds_A <= (A.shape[0] - 1)).all()
-            or not (seeds_B <= (A.shape[0] - 1)).all()
-        ):
-            msg = "Seed array entries must be less than or equal to n-1"
-            raise ValueError(msg)
+        _check_costs_seeds(A, B, seeds_A, seeds_B)
 
         n = A.shape[0]  # number of vertices in graphs
-        n_seeds = seeds_A.shape[0]  # number of seeds
+        n_seeds = seeds_A.shape[0]
         n_unseed = n - n_seeds
+
+        J = _check_init(self.init, n, n_unseed)
 
         score = math.inf
         perm_inds = np.zeros(n)
@@ -211,6 +216,8 @@ class GraphMatch:
         A = A[np.ix_(permutation_A, permutation_A)]
         B = B[np.ix_(permutation_B, permutation_B)]
 
+        # TODO need to permute the init matrix also, potentially.
+
         # definitions according to Seeded Graph Matching [2].
         A11 = A[:n_seeds, :n_seeds]
         A12 = A[:n_seeds, n_seeds:]
@@ -227,20 +234,7 @@ class GraphMatch:
         B22T = np.transpose(B22)
 
         for i in range(self.n_init):
-            # setting initialization matrix
-            if self.init_method == "rand":
-                sk = SinkhornKnopp()
-                K = np.random.rand(
-                    n_unseed, n_unseed
-                )  # generate a nxn matrix where each entry is a random integer [0,1]
-                for i in range(10):  # perform 10 iterations of Sinkhorn balancing
-                    K = sk.fit(K)
-                J = np.ones((n_unseed, n_unseed)) / float(
-                    n_unseed
-                )  # initialize J, a doubly stochastic barycenter
-                P = (K + J) / 2
-            elif self.init_method == "barycenter":
-                P = np.ones((n_unseed, n_unseed)) / float(n_unseed)
+            P = _make_initial_position(J, self.init_weight)
 
             const_sum = A21 @ np.transpose(B21) + np.transpose(A12) @ B12
             grad_P = math.inf  # gradient of P
@@ -274,9 +268,9 @@ class GraphMatch:
                 alpha = minimize_scalar(
                     f, bounds=(0, 1), method="bounded"
                 ).x  # computing the step size
-                P_i1 = alpha * P + (1 - alpha) * Q  # Update P
-                grad_P = np.linalg.norm(P - P_i1)
-                P = P_i1
+                P_next = alpha * P + (1 - alpha) * Q  # Update P
+                grad_P = np.linalg.norm(P - P_next)
+                P = P_next
                 n_iter += 1
             # end of FW optimization loop
 
@@ -340,3 +334,67 @@ def _unshuffle(array, n):
     unshuffle = np.array(range(n))
     unshuffle[array] = np.array(range(n))
     return unshuffle
+
+
+def _make_initial_position(J, init_weight, n_unseed):
+    if init_weight == 1:  # no randomness asked for, just give back guess
+        return J
+    sk = SinkhornKnopp()
+    K = np.random.rand(
+        n_unseed, n_unseed
+    )  # generate a nxn matrix where each entry is a random integer [0,1]
+    for i in range(10):  # perform 10 iterations of Sinkhorn balancing
+        K = sk.fit(K)
+    P = (K + J) / 2
+    return P
+
+
+def _check_doubly_stochastic(A):
+    row_sums = np.sum(A, axis=1)
+    col_sums = np.sum(A, axis=0)
+    ones = np.ones_like(col_sums)
+    # TODO not sure what the tolerance needs to be here
+    return np.allclose(row_sums, ones) and np.allclose(col_sums, ones)
+
+
+def _check_costs_seeds(A, B, seeds_A, seeds_B):
+    if A.shape[0] != B.shape[0]:
+        msg = "Adjacency matrices must be of equal size"
+        raise ValueError(msg)
+    elif A.shape[0] != A.shape[1] or B.shape[0] != B.shape[1]:
+        msg = "Adjacency matrix entries must be square"
+        raise ValueError(msg)
+    elif seeds_A.shape[0] != seeds_B.shape[0]:
+        msg = "Seed arrays must be of equal size"
+        raise ValueError(msg)
+    elif seeds_A.shape[0] > A.shape[0]:
+        msg = "There cannot be more seeds than there are nodes"
+        raise ValueError(msg)
+    elif not (seeds_A >= 0).all() or not (seeds_B >= 0).all():
+        msg = "Seed array entries must be greater than or equal to zero"
+        raise ValueError(msg)
+    elif (
+        not (seeds_A <= (A.shape[0] - 1)).all()
+        or not (seeds_B <= (A.shape[0] - 1)).all()
+    ):
+        msg = "Seed array entries must be less than or equal to n-1"
+        raise ValueError(msg)
+
+
+def _check_init(init, n, n_unseed):
+    if init == "barycenter":
+        J = np.full((n_unseed, n_unseed), 1 / n_unseed)
+    else:
+        # input checking for provided initialization
+        J = init
+        msg = None
+        if J.ndim != 2:
+            msg = "`init` matrix must have 2 dimensions"
+        elif J.shape != (n, n):
+            msg = "`init` matrix must have same shape as `A` and `B`"
+        if msg is not None:
+            raise ValueError(msg)
+        _check_doubly_stochastic(J)
+        # TODO somehow this needs to abide by the seeds
+        # indices of B that are seeded must be identity!
+    return J
