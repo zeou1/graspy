@@ -117,7 +117,6 @@ class GraphMatch:
         shuffle_input=True,
         eps=0.1,
         gmp=True,
-        init_weight=0.5,
     ):
 
         if type(n_init) is int and n_init > 0:
@@ -384,6 +383,8 @@ def _check_costs_seeds(A, B, seeds_A, seeds_B):
 def _check_init(init, n, n_unseed):
     if init == "barycenter":
         J = np.full((n_unseed, n_unseed), 1 / n_unseed)
+    elif init == "identity":
+        J = np.eye(n_unseed)
     else:
         # input checking for provided initialization
         J = init
