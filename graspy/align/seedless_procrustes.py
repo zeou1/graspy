@@ -280,3 +280,4 @@ class SeedlessProcrustes:
         """
         self.fit(X, Y, Q, P)
         return self.Q
+    
