@@ -18,7 +18,9 @@ from scipy.optimize import linear_sum_assignment
 from scipy.optimize import minimize_scalar
 from sklearn.utils import check_array
 from sklearn.utils import column_or_1d
-from .skp import SinkhornKnopp
+
+# from .skp import SinkhornKnopp
+import pandas as pd
 
 
 class GraphMatch:
@@ -131,13 +133,14 @@ class GraphMatch:
                 raise ValueError(msg)
         self.init = init
 
-        if not isinstance(init_weight, (float, int)):
-            msg = '"init_weight" must be a float or int'
-            raise TypeError(msg)
+        if not init_weight == "random":
+            if not isinstance(init_weight, (float, int)):
+                msg = '"init_weight" must be a float or int'
+                raise TypeError(msg)
 
-        if init_weight < 0 or init_weight > 1:
-            msg = '"init_weight" must be between 0 and 1'
-            raise ValueError(msg)
+            if init_weight < 0 or init_weight > 1:
+                msg = '"init_weight" must be between 0 and 1'
+                raise ValueError(msg)
 
         if max_iter > 0 and type(max_iter) is int:
             self.max_iter = max_iter
@@ -149,7 +152,8 @@ class GraphMatch:
         else:
             msg = '"shuffle_input" must be a boolean'
             raise TypeError(msg)
-        if eps > 0 and type(eps) is float:
+        if eps > 0 and isinstance(eps, (int, float)):
+            # if eps > 0 and type(eps) is float:
             self.eps = eps
         else:
             msg = '"eps" must be a positive float'
@@ -159,6 +163,7 @@ class GraphMatch:
         else:
             msg = '"gmp" must be a boolean'
             raise TypeError(msg)
+        self.init_weight = init_weight
 
     def fit(self, A, B, seeds_A=[], seeds_B=[]):
         """
@@ -232,12 +237,18 @@ class GraphMatch:
         B21T = np.transpose(B21)
         B22T = np.transpose(B22)
 
+        progress_by_init = []
+        results_by_init = []
         for i in range(self.n_init):
+            progress = []
             P = _make_initial_position(J, self.init_weight)
 
             const_sum = A21 @ np.transpose(B21) + np.transpose(A12) @ B12
             grad_P = math.inf  # gradient of P
             n_iter = 0  # number of FW iterations
+            progress.append(
+                {"position": P, "grad": grad_P, "iter": n_iter, "init_idx": i}
+            )
 
             # OPTIMIZATION WHILE LOOP BEGINS
             while grad_P > self.eps and n_iter < self.max_iter:
@@ -264,6 +275,13 @@ class GraphMatch:
                         )
                     )
 
+                def _obj_func_partial(P):
+                    D = np.zeros((n, n))
+                    if n_seeds > 0:
+                        D[np.arange(n_seeds), np.arange(n_seeds)] = 1
+                    D[n_seeds:, n_seeds:] = P
+                    return np.trace(A @ D @ B.T @ D.T)
+
                 alpha = minimize_scalar(
                     f, bounds=(0, 1), method="bounded"
                 ).x  # computing the step size
@@ -271,6 +289,18 @@ class GraphMatch:
                 grad_P = np.linalg.norm(P - P_next)
                 P = P_next
                 n_iter += 1
+                pseudoscore = _obj_func_partial(P)
+                progress.append(
+                    {
+                        "position": P,
+                        "grad": grad_P,
+                        "iter": n_iter,
+                        "init_idx": i,
+                        "pseudoscore": pseudoscore,
+                    }
+                )
+            progress = pd.DataFrame(progress)
+            progress_by_init.append(progress)
             # end of FW optimization loop
 
             row, col = linear_sum_assignment(
@@ -284,6 +314,8 @@ class GraphMatch:
                 np.transpose(A) @ B[np.ix_(perm_inds_new, perm_inds_new)]
             )  # computing objective function value
 
+            results_by_init.append({"solution": perm_inds_new, "score": score_new})
+
             if obj_func_scalar * score_new < obj_func_scalar * score:  # minimizing
                 score = score_new
                 perm_inds = np.zeros(n, dtype=int)
@@ -294,6 +326,9 @@ class GraphMatch:
         permutation_B_unshuffle = _unshuffle(permutation_B, n)
         B = B[np.ix_(permutation_B_unshuffle, permutation_B_unshuffle)]
         score = np.trace(np.transpose(A) @ B[np.ix_(perm_inds, perm_inds)])
+
+        self.progress_ = pd.concat(progress_by_init)
+        self.results_ = pd.DataFrame(results_by_init)
 
         self.perm_inds_ = perm_inds  # permutation indices
         self.score_ = score  # objective function value
@@ -335,16 +370,37 @@ def _unshuffle(array, n):
     return unshuffle
 
 
-def _make_initial_position(J, init_weight, n_unseed):
+def _doubly_stochastic(n, eps=1e-6, max_iter=1000):
+    P = np.random.rand(n, n)
+
+    c = 1 / P.sum(axis=0)
+    r = 1 / (P @ c)
+    P_eps = P
+
+    for it in range(max_iter):
+        if (np.abs(P_eps.sum(axis=1) - 1) < eps).all() and (
+            np.abs(P_eps.sum(axis=0) - 1) < eps
+        ).all():
+            # # All column/row sums ~= 1 within threshold
+            # reason = f"Threshold satisfied within {it+1} iterations"
+            break
+        c = 1 / (r @ P)
+        r = 1 / (P @ c)
+        P_eps = r[:, None] * P * c
+    else:
+        # reason = "Max iter reached"
+        pass
+
+    return P_eps
+
+
+def _make_initial_position(init, init_weight):
     if init_weight == 1:  # no randomness asked for, just give back guess
-        return J
-    sk = SinkhornKnopp()
-    K = np.random.rand(
-        n_unseed, n_unseed
-    )  # generate a nxn matrix where each entry is a random integer [0,1]
-    for i in range(10):  # perform 10 iterations of Sinkhorn balancing
-        K = sk.fit(K)
-    P = (K + J) / 2
+        return init
+    if init_weight == "random":
+        init_weight = np.random.rand()
+    rand = _doubly_stochastic(len(init))
+    P = init_weight * init + (1 - init_weight) * rand
     return P
 
 
