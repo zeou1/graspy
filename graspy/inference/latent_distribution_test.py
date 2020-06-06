@@ -157,7 +157,7 @@ class LatentDistributionTest(BaseInference):
         else:
             size_corrections_supported = ["sampling", "expected"]
             if size_correction not in size_corrections_supported:
-                msg = "supported size corrections are {}".fomat(
+                msg = "supported size corrections are {}".format(
                     size_corrections_supported
                 )
                 raise NotImplementedError(msg)
@@ -236,7 +236,7 @@ class LatentDistributionTest(BaseInference):
 
         return plug_in_variance_estimator
 
-    def _estimate_correction_variances(self, X_hat, Y_hat, pooled=True):
+    def _estimate_correction_variances(self, X_hat, Y_hat, pooled=False):
         N, d_X = X_hat.shape  # dont really need to do this (n_components)
         M, d_Y = Y_hat.shape
         if N == M:
@@ -255,7 +255,7 @@ class LatentDistributionTest(BaseInference):
                 two_samples = np.concatenate([X_hat, Y_hat], axis=0)
                 get_sigma = self._fit_plug_in_variance_estimator(two_samples)
             else:
-                get_sigma = self._fit_plug_in_variance_estimator(X_hat)
+                get_sigma = self._fit_plug_in_variance_estimator(Y_hat)
             X_sigmas = np.zeros((N, d_X, d_X))
             Y_sigmas = get_sigma(Y_hat) * (M - N) / (N * M)
         return X_sigmas, Y_sigmas
