@@ -19,18 +19,18 @@ sys.path.insert(0, os.path.abspath(".."))
 
 # -- Project information -----------------------------------------------------
 
-project = "GraSPy"
-copyright = "2018"
-authors = u"NeuroData"
+project = "graspologic"
+copyright = "2020"
+authors = "Microsoft, NeuroData"
 
 realpath = os.path.realpath(__file__)
 dir_realpath = os.path.dirname(os.path.dirname(realpath))
 sys.path.append(dir_realpath)
 
-import graspy
+import graspologic
 
-version = graspy.version.version.__semver
-release = graspy.version.version.version
+version = graspologic.version.version.__semver
+release = graspologic.version.version.version
 
 # -- Extension configuration -------------------------------------------------
 extensions = [
@@ -66,12 +66,14 @@ autodoc_member_order = "bysource"  # default is alphabetical
 
 # -- sphinx.ext.intersphinx
 intersphinx_mapping = {
-    "numpy": ("https://docs.scipy.org/doc/numpy", None),
-    "python": ("https://docs.python.org/3", None),
-    "scipy": ("https://docs.scipy.org/doc/scipy/reference", None),
-    "sklearn": ("http://scikit-learn.org/dev", None),
+    "anytree": ("https://anytree.readthedocs.io/en/latest/", None),
     "hyppo": ("https://hyppo.neurodata.io", None),
     "matplotlib": ("https://matplotlib.org", None),
+    "networkx": ("https://networkx.org/documentation/stable", None),
+    "numpy": ("https://numpy.org/doc/stable", None),
+    "python": ("https://docs.python.org/3", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy/reference", None),
+    "sklearn": ("https://scikit-learn.org/dev", None),
 }
 
 # -- sphinx options ----------------------------------------------------------
@@ -84,7 +86,7 @@ source_encoding = "utf-8"
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
 html_static_path = []
-modindex_common_prefix = ["graspy."]
+modindex_common_prefix = ["graspologic."]
 
 pygments_style = "sphinx"
 smartquotes = False
@@ -114,7 +116,7 @@ html_theme_options = {
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = "graspydoc"
+htmlhelp_basename = "graspologicdoc"
 
 # -- Options for LaTeX output ------------------------------------------------
 
@@ -137,14 +139,14 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, "graspy.tex", "GraSPy Documentation", authors, "manual")
+    (master_doc, "graspologic.tex", "graspologic Documentation", authors, "manual")
 ]
 
 # -- Options for manual page output ------------------------------------------
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [(master_doc, "graspy", "graspy Documentation", [authors], 1)]
+man_pages = [(master_doc, "graspologic", "graspologic Documentation", [authors], 1)]
 
 # -- Options for Texinfo output ----------------------------------------------
 
@@ -154,10 +156,10 @@ man_pages = [(master_doc, "graspy", "graspy Documentation", [authors], 1)]
 texinfo_documents = [
     (
         master_doc,
-        "graspy",
-        "graspy Documentation",
+        "graspologic",
+        "graspologic Documentation",
         authors,
-        "graspy",
+        "graspologic",
         "One line description of project.",
         "Miscellaneous",
     )

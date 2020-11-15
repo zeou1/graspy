@@ -11,13 +11,12 @@ MINIMUM_PYTHON_VERSION = 3, 6  # Minimum of Python 3.6
 if sys.version_info < MINIMUM_PYTHON_VERSION:
     sys.exit("Python {}.{}+ is required.".format(*MINIMUM_PYTHON_VERSION))
 
-sys.path.insert(0, os.path.join("graspy", "version"))
-# TODO: #454 Change path in https://github.com/microsoft/graspologic/issues/454
+sys.path.insert(0, os.path.join("graspologic", "version"))
 from version import version
 
 sys.path.pop(0)
 
-version_path = os.path.join("graspy", "version", "version.txt")
+version_path = os.path.join("graspologic", "version", "version.txt")
 with open(version_path, "w") as version_file:
     version_file.write(f"{version}")
 
@@ -25,7 +24,7 @@ with open("README.md", "r") as f:
     LONG_DESCRIPTION = f.read()
 
 setup(
-    name="graspy",
+    name="graspologic",
     version=version,
     description="A set of python modules for graph statistics",
     long_description=LONG_DESCRIPTION,
@@ -47,17 +46,19 @@ setup(
     ],
     packages=find_packages(exclude=["tests", "tests.*", "tests/*"]),
     include_package_data=True,
-    package_data={
-        "version": [os.path.join("graspy", "version", "version.txt")]
-    },  # TODO: #454 Also needs changed by https://github.com/microsoft/graspologic/issues/454
+    package_data={"version": [os.path.join("graspologic", "version", "version.txt")]},
     install_requires=[
+        "anytree>=2.8.0",
+        "gensim",
+        "hyppo>=0.1.3",
+        "joblib>=0.17.0", # Older versions of joblib cause issue #806.  Transitive dependency of hyppo.
+        "matplotlib>=3.0.0,<=3.3.0",
         "networkx>=2.1",
         "numpy>=1.8.1",
+        "POT>=0.7.0",
+        "seaborn>=0.9.0",
         "scikit-learn>=0.19.1",
         "scipy>=1.4.0",
-        "seaborn>=0.9.0",
-        "matplotlib>=3.0.0,<=3.3.0",
-        "hyppo>=0.1.3",
     ],
     extras_require={
         "dev": [
@@ -73,6 +74,7 @@ setup(
             "sphinx",
             "sphinxcontrib-rawfiles",
             "sphinx-rtd-theme",
+            "testfixtures",
         ]
     },
 )
