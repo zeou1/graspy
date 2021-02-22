@@ -5,7 +5,7 @@ import warnings
 
 import numpy as np
 
-from ..utils import import_graph, is_fully_connected, to_laplace
+from ..utils import import_graph, is_fully_connected, to_laplacian
 from .base import BaseEmbedMulti
 from scipy.sparse import isspmatrix_csr
 
@@ -25,10 +25,10 @@ def _get_laplacian_matrices(graphs):
         List of array-like with shapes (n_vertices, n_vertices).
     """
     if isinstance(graphs, list):
-        out = [to_laplace(g) for g in graphs]
+        out = [to_laplacian(g) for g in graphs]
     elif isinstance(graphs, np.ndarray):
         # Copying is necessary to not overwrite input array
-        out = np.array([to_laplace(graphs[i]) for i in range(len(graphs))])
+        out = np.array([to_laplacian(graphs[i]) for i in range(len(graphs))])
 
     return out
 
@@ -211,13 +211,14 @@ class OmnibusEmbed(BaseEmbedMulti):
                 )
                 warnings.warn(msg, UserWarning)
 
-        # Diag augment
-        if self.diag_aug:
-            graphs = self._diag_aug(graphs)
-
         # Laplacian transform
         if self.lse:
             graphs = _get_laplacian_matrices(graphs)
+            self.diag_aug = False
+
+        # Diag augment
+        if self.diag_aug:
+            graphs = self._diag_aug(graphs)
 
         # Create omni matrix
         omni_matrix = _get_omni_matrix(graphs)
